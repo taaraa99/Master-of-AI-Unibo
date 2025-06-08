@@ -1,0 +1,19 @@
+{
+    "best_max_distance": 12,
+    "solving_time": 2,
+    "routes": [
+        [
+            5,
+            4,
+            2
+        ],
+        [
+            7,
+            3
+        ],
+        [
+            1,
+            6
+        ]
+    ]
+}

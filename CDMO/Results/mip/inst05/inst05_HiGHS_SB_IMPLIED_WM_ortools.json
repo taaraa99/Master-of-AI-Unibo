@@ -1,0 +1,16 @@
+{
+    "HIGHS+SB+IMPLIED+WM": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    }
+}
