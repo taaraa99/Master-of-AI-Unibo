@@ -1,0 +1,102 @@
+{
+  "sat_linear": {
+    "time": 1,
+    "optimal": true,
+    "obj": 12,
+    "sol": [
+      [
+        5,
+        4,
+        2
+      ],
+      [
+        3,
+        6
+      ],
+      [
+        1,
+        7
+      ]
+    ]
+  },
+  "sat_binary": {
+    "time": 1,
+    "optimal": true,
+    "obj": 12,
+    "sol": [
+      [
+        5,
+        4,
+        2
+      ],
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        1
+      ]
+    ]
+  },
+  "sat_binary_knn6": {
+    "time": 0,
+    "optimal": true,
+    "obj": 12,
+    "sol": [
+      [
+        5,
+        4,
+        2
+      ],
+      [
+        3,
+        7
+      ],
+      [
+        1,
+        6
+      ]
+    ]
+  },
+  "sat_binary_lns": {
+    "time": 0,
+    "optimal": true,
+    "obj": 12,
+    "sol": [
+      [
+        5,
+        4,
+        2
+      ],
+      [
+        7,
+        3
+      ],
+      [
+        1,
+        6
+      ]
+    ]
+  },
+  "sat_binary_lns_knn15": {
+    "time": 0,
+    "optimal": true,
+    "obj": 12,
+    "sol": [
+      [
+        5,
+        4,
+        2
+      ],
+      [
+        7,
+        3
+      ],
+      [
+        1,
+        6
+      ]
+    ]
+  }
+}
