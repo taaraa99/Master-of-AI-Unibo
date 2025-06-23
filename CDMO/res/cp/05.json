@@ -1,0 +1,114 @@
+{
+    "gecode-no-sb": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "gecode-no-sb-imp": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "gecode-sb": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "gecode-sb-imp": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "chuffed-no-sb": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "chuffed-no-sb-imp": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "chuffed-sb": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "chuffed-sb-imp": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    }
+}

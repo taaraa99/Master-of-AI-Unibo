@@ -1,157 +1,186 @@
+#!/usr/bin/env python3
+"""
+Batch SMT-based solver for the Multiple Couriers Problem (MCP) using Z3.
+Processes multiple .dat/.txt instances with binary/linear/optimize search.
+Writes per-instance JSON under res/SMT/<index>.json and prints results to stdout.
+"""
 import argparse
-import sys
-import os
 import json
+import os
+import sys
 from pathlib import Path
 from time import perf_counter
-from typing import List
-
-# Ensure the current directory (this script's folder) is on PYTHONPATH
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-if SCRIPT_DIR not in sys.path:
-    sys.path.insert(0, SCRIPT_DIR)
-
-from .instance import load_instance
-from .solver import optimise, lns_optimise
-from .utils import save_result
-from typing import List, Tuple
-from .instance import load_instance, Instance
+import math
+from z3 import Solver, Optimize, Bool, Int, If, PbEq, Sum, And, Or, Not, is_true, sat
 
 
+def parse_instance(path):
+    """
+    Reads a MCP instance file (m, n, capacities, weights, distance matrix).
+    """
+    with open(path) as f:
+        lines = [ln.strip() for ln in f if ln.strip()]
+    m = int(lines[0]); n = int(lines[1])
+    capacities = list(map(int, lines[2].split()))
+    weights    = list(map(int, lines[3].split()))
+    D = [list(map(int, row.split())) for row in lines[4:4+n+1]]
+    return m, n, capacities, weights, D
 
 
-def main() -> None:
+def build_smt_routing(m, n, weights, capacities, D,
+                       search='binary', timeout_s=300):
+    start = perf_counter()
+    origin = n
+    # Decision vars
+    x = [[ Bool(f"x_{c}_{i}") for i in range(n)] for c in range(m)]
+    y = [[[ Bool(f"y_{c}_{i}_{j}") for j in range(n+1)] for i in range(n+1)] for c in range(m)]
+    u = [[ Int(f"u_{c}_{i}") for i in range(n+1)] for c in range(m)]
+    max_dist = Int('max_dist')
+
+    def add_constraints(slv):
+        # capacity
+        for c in range(m):
+            slv.add(Sum([If(x[c][i], weights[i], 0) for i in range(n)]) <= capacities[c])
+        # assign exactly once
+        for i in range(n):
+            slv.add(PbEq([(x[c][i], 1) for c in range(m)], 1))
+        # flow and depot
+        for c in range(m):
+            slv.add(PbEq([(y[c][origin][j],1) for j in range(n)],1))
+            slv.add(PbEq([(y[c][i][origin],1) for i in range(n)],1))
+            for i in range(n):
+                slv.add(PbEq([(y[c][i][j],1) for j in range(n+1)], If(x[c][i],1,0)))
+                slv.add(PbEq([(y[c][j][i],1) for j in range(n+1)], If(x[c][i],1,0)))
+        # no self loops
+        for c in range(m):
+            for i in range(n+1): slv.add(Not(y[c][i][i]))
+        # MTZ subtours
+        for c in range(m):
+            for i in range(1,n+1): slv.add(And(u[c][i]>=1, u[c][i]<=n))
+            for i in range(n+1):
+                for j in range(n+1):
+                    if i!=j: slv.add(If(y[c][i][j], u[c][i]+1==u[c][j], True))
+            for j in range(n): slv.add(If(y[c][origin][j], u[c][j]==1, True))
+        # max distance constraint
+        for c in range(m):
+            expr = Sum([If(y[c][i][j], D[i][j], 0)
+                        for i in range(n+1) for j in range(n+1)])
+            slv.add(expr <= max_dist)
+
+    # Select search mode
+    if search == 'optimize':
+        solver = Optimize()
+        solver.set('timeout', timeout_s*1000)
+        add_constraints(solver)
+        solver.minimize(max_dist)
+        sat_res = solver.check()
+        model = solver.model() if sat_res == sat else None
+    else:
+        solver = Solver(); solver.set('timeout', timeout_s*1000)
+        add_constraints(solver)
+        low, high = 0, sum(max(row) for row in D)
+        model = None;
+        if search == 'linear':
+            for val in range(low, high+1):
+                solver.push(); solver.add(max_dist <= val)
+                if solver.check() == sat:
+                    model = solver.model(); solver.pop(); break
+                solver.pop()
+        else:  # binary
+            L, H = low, high
+            while L <= H:
+                mid = (L+H)//2
+                solver.push(); solver.add(max_dist <= mid)
+                if solver.check() == sat:
+                    model = solver.model(); H = mid-1
+                else:
+                    L = mid+1
+                solver.pop()
+    elapsed = perf_counter() - start
+    t = min(int(elapsed), timeout_s)
+    if not model:
+        return None, t, None
+    best = model[max_dist].as_long()
+    # extract tours
+    tours = []
+    for c in range(m):
+        route = []
+        cur = origin
+        while True:
+            nxt = None
+            for j in range(n+1):
+                if is_true(model.evaluate(y[c][cur][j])):
+                    nxt = j; break
+            if nxt is None or nxt == origin:
+                break
+            route.append(nxt+1)
+            cur = nxt
+        tours.append(route)
+    return best, t, tours
+
+
+def main():
     parser = argparse.ArgumentParser(
-        description="Loop over .dat instances and solve via SAT with binary/linear, LNS and kNN"
+        description="Batch solve MCP instances via SMT (Z3)"
     )
     parser.add_argument(
-        "instances", nargs="*", help=".dat files or glob patterns (e.g. inst*.dat)"
+        "instances", nargs="*",
+        default=["Instances"],
+        help=".dat/.txt files or glob patterns (e.g. inst*.dat)"
+    )
+    parser.add_argument(
+        "--search", choices=["binary","linear","optimize"],
+        default="binary", help="search strategy"
     )
     parser.add_argument(
         "--timeout", type=int, default=300,
-        help="per-instance time limit in seconds (default: 300)"
+        help="time limit per instance (seconds)"
     )
     parser.add_argument(
-        "--search", choices=["binary", "linear"], default="binary",
-        help="search strategy: binary (default) or linear"
+        "--outdir", default="res/SMT",
+        help="directory for JSON results"
     )
-    parser.add_argument(
-        "--lns", action="store_true",
-        help="apply Large Neighborhood Search refinement after initial solve"
-    )
-    parser.add_argument(
-        "--lns-iters", type=int, default=20,
-        help="LNS iterations (default: 20)"
-    )
-    parser.add_argument(
-        "--destroy-frac", type=float, default=0.3,
-        help="fraction of assignments to destroy in LNS (default: 0.3)"
-    )
-    parser.add_argument(
-        "--knn", type=int,
-        help="number of nearest neighbors for pruning edges (kNN)"
-    )
-
-
     args = parser.parse_args()
 
-    # collect all .dat files
     patterns = args.instances if args.instances else ["inst*.dat"]
-    files: List[Path] = []
+    files = []
     for pat in patterns:
         p = Path(pat)
         if p.is_dir():
-            files.extend(sorted(p.glob("*.dat")))
+            files.extend(sorted(p.glob("*.*")))
         else:
-            files.extend(sorted(Path(".").glob(pat)))
-    files = sorted(set(files))
-
+            files.extend(sorted(Path('.').glob(pat)))
+    files = sorted({f for f in files if f.is_file()})
     if not files:
         print("No instance files found.", file=sys.stderr)
         sys.exit(1)
 
-    # make sure the top‐level res/SAT folder exists
-    sat_res_dir = Path("res") / "SAT"
-    sat_res_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.outdir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     for f in files:
-        # 1) print header
-        header = f"=== Solving {f.name}"
-        if args.lns:
-            header += " + LNS"
-        if args.knn is not None:
-            header += f" (kNN={args.knn})"
-        header += " ==="
-        print(header)
-
-        # 2) solve
-        start = perf_counter()
-        inst = load_instance(f)
-        # prepare sub‐instances
-
-
-
-        
-        try:
-            if args.lns:
-                opt_val, tours = lns_optimise(
-                    inst,
-                    timeout=args.timeout,
-                    strategy=args.search,
-                    lns_iters=args.lns_iters,
-                    destroy_fraction=args.destroy_frac,
-                    knn=args.knn
-                )
-            else:
-                opt_val, tours = optimise(
-                    inst,
-                    timeout=args.timeout,
-                    strategy=args.search,
-                    knn=args.knn
-                )
-        except RuntimeError as e:
-            print(f"[ERROR] {f.name}: no feasible solution: {e}", file=sys.stderr)
-            continue
-        elapsed = perf_counter() - start
-
-        # 3) prepare JSON entry
-        t_int   = int(elapsed) if elapsed < args.timeout else args.timeout
-        optimal = (t_int < args.timeout)
-        # sol     = [[j+1 for j in sorted(route)] for route in tours]
-        sol = [[node+1 for node in route] for route in tours]
-
-        approach = "sat_" + args.search
-        if args.lns:
-            approach += "_lns"
-        if args.knn is not None:
-            approach += f"_knn{args.knn}"
-
-        record = {
-            "time":    t_int,
-            "optimal": optimal,
-            "obj":     opt_val,
-            "sol":     sol
-        }
-
-        # 4) print JSON to stdout
-        print(f"=== {f.name} result ===")
+        # header = f"=== SMT {args.search} on {f.name} ==="
+        # print(header)
+        best, t, tours = build_smt_routing(
+            *parse_instance(f),
+            search=args.search, timeout_s=args.timeout
+        )
+        optimal = (t < args.timeout and best is not None)
+        sol = tours if tours else [[] for _ in range(len(parse_instance(f)[0]))]
+        approach = f"smt_{args.search}"
+        record = {"time": t, "optimal": optimal,
+                  "obj": best or 0, "sol": sol}
+        # print result
         print(json.dumps({approach: record}, indent=2))
-        print(f"(solved in {t_int}s, optimal={optimal}, obj={opt_val})\n")
-
-        # 5) merge into res/SAT/<instance_index>.json
-        #    e.g. inst03.dat → 3.json
-        digits = "".join(filter(str.isdigit, f.stem))
-        idx    = int(digits) if digits else f.stem
-        out_file = sat_res_dir / f"{idx}.json"
-
+        # merge into file
+        digits = ''.join(filter(str.isdigit, f.stem)) or f.stem
+        out_file = out_dir / f"{digits}.json"
         if out_file.exists():
             full = json.loads(out_file.read_text())
         else:
             full = {}
-
         full[approach] = record
         out_file.write_text(json.dumps(full, indent=2))
-
         print(f"→ Updated {out_file}\n")
 
 if __name__ == "__main__":
