@@ -3,6 +3,8 @@ import sys
 import os
 import json
 from ortools.linear_solver import pywraplp
+import io
+import contextlib
 
 def read_instance(file_path):
     """
@@ -106,6 +108,7 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
       - "CUT": Inserts an additional valid inequality (cut) to strengthen the model.
     """
     solver = pywraplp.Solver.CreateSolver("highs")
+    solver.EnableOutput()
     if not solver:
         raise RuntimeError("Unable to create HiGHS solver with OR-Tools.")
     param_string = f"time_limit={time_limit} heuristic_scale=2"
@@ -180,11 +183,13 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
                 if j != k:
                     solver.Add(u[(i,j)] - u[(i,k)] + n * x[(i,j,k)] <= n - 1)
     # (H) Optionally include symmetry-breaking constraints to reduce redundant equivalent solutions.
-    for i in range(1, m):
-        solver.Add(
-            solver.Sum(j * a[(i - 1, j)] for j in range(1, n+1))
-            <= solver.Sum(j * a[(i, j)] for j in range(1, n+1))
-        )
+    # (H) Optionally include symmetry-breaking constraints to reduce redundant equivalent solutions.
+    if "SB" in approach:
+        for i in range(1, m):
+            solver.Add(
+                solver.Sum(j * a[(i - 1, j)] for j in range(1, n+1))
+                <= solver.Sum(j * a[(i, j)] for j in range(1, n+1))
+            )
 
     # Extra valid inequality cut ("CUT"):
     if "CUT" in approach:
@@ -203,7 +208,10 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
         solver.Add(z >= max_roundtrip / 2.0)
     solver.Minimize(z)
     
-    status = solver.Solve()
+    # status = solver.Solve()
+    buf = io.StringIO()
+    with contextlib.redirect_stderr(buf):
+        status = solver.Solve()
     solution = {
         "time": int(solver.WallTime() / 1000.0),
         "optimal": (status == solver.OPTIMAL),
