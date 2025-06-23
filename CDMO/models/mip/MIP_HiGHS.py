@@ -183,7 +183,6 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
                 if j != k:
                     solver.Add(u[(i,j)] - u[(i,k)] + n * x[(i,j,k)] <= n - 1)
     # (H) Optionally include symmetry-breaking constraints to reduce redundant equivalent solutions.
-    # (H) Optionally include symmetry-breaking constraints to reduce redundant equivalent solutions.
     if "SB" in approach:
         for i in range(1, m):
             solver.Add(

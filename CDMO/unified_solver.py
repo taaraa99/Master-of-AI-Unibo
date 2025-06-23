@@ -3,13 +3,14 @@ import json
 import sys
 import time
 import traceback
-import importlib.util
+from typing import Dict, List, Tuple
 from datetime import datetime, timedelta
 from typing import Tuple, List
 import re
 
 import minizinc
 from z3 import *
+from z3 import is_true, ModelRef, Bool
 
 # We import our OR‑Tools model functions from two files.
 # The first import is used when running the first five approaches (the HiGHS variants).
@@ -17,6 +18,9 @@ from models.mip.MIP_HiGHS import read_instance as read_instance1, build_and_solv
 # The second import is used for the last two approaches (CBC and SCIP).
 from models.mip.MIP_CBC_SCIP import read_instance as read_instance2, build_and_solve_mcp as build_and_solve_mcp2
 
+#Import the methoids used for SAT
+from models.sat.sat import Instance, optimise, lns_optimise
+from models.sat.solver import build_solver
 
 # This class handles constraint programming (CP) solving.
 class CPSolver:
@@ -229,90 +233,151 @@ class MIPSolver:
         print(f"All MIP approaches for instance {inst_id} written to {out_file}")
 
 
-# SAT and SMT solvers remain unchanged
+# SAT solver class
+
 class SAT_Solver:
-    def __init__(self, models_dir, sat_solver_type):
+    def __init__(
+        self,
+        models_dir: str,
+        timeout_per_config: int = 300,
+        lns_iters: int = 3,
+        destroy_frac: float = 0.3
+    ):
         self.models_dir = os.path.abspath(models_dir)
-        self.sat_solver_type = sat_solver_type
-        if not os.path.exists(self.models_dir):
+        if not os.path.isdir(self.models_dir):
             raise FileNotFoundError(f"Model directory '{self.models_dir}' does not exist.")
-        self.model_files = [os.path.join(self.models_dir, f) for f in os.listdir(self.models_dir) if f.endswith(".py")]
-        if not self.model_files:
-            raise FileNotFoundError(f"No SAT model files in '{self.models_dir}'.")
-        self.sat_model = self._load_model()
+        self.timeout = timeout_per_config
+        self.lns_iters = lns_iters
+        self.destroy_frac = destroy_frac
 
-    def _load_model(self):
-        model_filename = f"{self.sat_solver_type}.py"
-        model_path = os.path.join(self.models_dir, model_filename)
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"SAT model '{model_filename}' not found in '{self.models_dir}'.")
-        spec = importlib.util.spec_from_file_location("sat_model", model_path)
-        sat_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sat_module)
-        model_function = getattr(sat_module, "sat_model", None)
-        if not model_function:
-            raise AttributeError(f"Function 'sat_model' not found in '{model_filename}'.")
-        return model_function
+        # the five SAT configurations you wanted
+        self.configs: List[Tuple[str, Dict]] = [
+            ("linear",      dict(strategy="linear", knn=None, lns=False )),
+            ("binary",      dict(strategy="binary", knn=None, lns=False )),
+            ("binary_knn5", dict(strategy="binary", knn=5,    lns=False )),
+            ("lns",         dict(strategy="binary", knn=None, lns=True  )),
+            ("lns_knn5",    dict(strategy="binary", knn=5,    lns=True  )),
+        ]
 
-    def read_instance(self, file_path):
+    def read_instance(self, file_path: str) -> Instance:
         with open(file_path, 'r') as f:
-            lines = f.readlines()
-        return {
-            "m": int(lines[0].strip()),
-            "n": int(lines[1].strip()),
-            "l": list(map(int, lines[2].split())),
-            "s": list(map(int, lines[3].split())),
-            "D": [list(map(int, l.split())) for l in lines[4:]]
-        }
+            lines = [l.strip() for l in f if l.strip()]
+        m    = int(lines[0])
+        n    = int(lines[1])
+        cap  = list(map(int, lines[2].split()))
+        size = list(map(int, lines[3].split()))
+        D    = [list(map(int,row.split())) for row in lines[4:]]
+        return Instance(m=m, n=n, cap=cap, size=size, D=D)
 
-    def solve(self, instance_file, output_dir):
+    def _reconstruct_route(
+        self,
+        inst: Instance,
+        model: ModelRef,
+        e_vars: Dict[Tuple[int,int,int], Bool],
+        courier: int
+    ) -> List[int]:
+        dep = inst.depot
+        succ = [
+            b for (i,a,b), lit in e_vars.items()
+            if i == courier and a == dep and is_true(model.eval(lit, model_completion=True))
+        ]
+        if not succ:
+            return []
+        route, curr, visited = [], succ[0], set()
+        while curr != dep and curr not in visited:
+            visited.add(curr)
+            route.append(curr)
+            nexts = [
+                b for (i,a,b), lit in e_vars.items()
+                if i == courier and a == curr and is_true(model.eval(lit, model_completion=True))
+            ]
+            if not nexts:
+                break
+            curr = nexts[0]
+        return route
+
+    def solve(self, instance_file: str, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
         inst = self.read_instance(instance_file)
-        result = self.sat_model(inst["m"], inst["n"], inst["s"], inst["l"], inst["D"], timeout_duration=300)
-        routes = result["sol"]
-        dists = []
-        for r in routes:
-            if r:
-                dd = inst["D"][0][r[0]]
-                for i in range(len(r)-1): dd += inst["D"][r[i]][r[i+1]]
-                dd += inst["D"][r[-1]][0]
-                dists.append(dd)
+
+        # Precompute a trivial UB: sum of all sizes × max distance
+        max_d = max(max(row) for row in inst.D)
+        trivial_UB = sum(inst.size) * max_d
+
+        results = {}
+        for name, cfg in self.configs:
+            t0 = time.time()
+            # first, try to find B
+            try:
+                if cfg["lns"]:
+                    B, _ = lns_optimise(
+                        inst,
+                        timeout=self.timeout,
+                        strategy=cfg["strategy"],
+                        knn=cfg["knn"],
+                        lns_iters=self.lns_iters,
+                        destroy_fraction=self.destroy_frac
+                    )
+                else:
+                    B, _ = optimise(
+                        inst,
+                        timeout=self.timeout,
+                        strategy=cfg["strategy"],
+                        knn=cfg["knn"]
+                    )
+            except RuntimeError:
+                # fallback if UB infeasible
+                B = trivial_UB
+
+            # now rebuild at bound B, zero‐timeout, extract model
+            solver, e_vars, v_vars = build_solver(inst, B, cfg["knn"])
+            solver.set("timeout", 0)
+            if solver.check() == sat:
+                model = solver.model()
+                tours = [
+                    self._reconstruct_route(inst, model, e_vars, i)
+                    for i in range(inst.m)
+                ]
             else:
-                dists.append(0)
-        maxd = max(dists) if dists else 0
-        updated = {"time": (datetime.now()-datetime.now()).total_seconds(),
-                   "optimal": result.get("optimal", False),
-                   "obj": maxd,
-                   "sol": routes}
+                tours = [[] for _ in range(inst.m)]
+
+            # convert to 1-based indexing
+            sol1 = [[j+1 for j in route] for route in tours]
+            elapsed = int(time.time() - t0)
+            results[name] = {
+                "time":    elapsed,
+                "optimal": elapsed < self.timeout,
+                "obj":     B,
+                "sol":     sol1
+            }
+
+        # write out
         base = os.path.splitext(os.path.basename(instance_file))[0]
         inst_id = re.search(r"\d+", base).group(0)
-        out = os.path.join(output_dir, f"{inst_id}.json")
-        with open(out, 'w') as jf:
-            json.dump(updated, jf, indent=4)
-        print(f"SAT solution saved as {inst_id}.json")
+        out_path = os.path.join(output_dir, f"{inst_id}.json")
+        with open(out_path, "w") as jf:
+            json.dump(results, jf, indent=4)
+
+        print(f"All SAT approaches for instance {inst_id} written to {out_path}")
+
 
 
 class UnifiedSolver:
-    def __init__(self, solver_type, base_dir=".", output_dir="res", smt_type=None, sat_type=None):
-        self.solver_type = solver_type.lower()
+    def __init__(self, solver_type, base_dir=".", output_dir="res"):
+        self.solver_type   = solver_type.lower()
         self.instances_dir = os.path.join(base_dir, "Instances")
-        self.output_dir = os.path.join(base_dir, output_dir, solver_type)
+        self.output_dir    = os.path.join(base_dir, output_dir, solver_type)
         os.makedirs(self.output_dir, exist_ok=True)
+
         if self.solver_type == "cp":
             self.solver = CPSolver()
         elif self.solver_type == "mip":
             self.solver = MIPSolver()
-        elif self.solver_type == "smt":
-            from models.smt.SMT_Solver import SMT_Solver
-            if smt_type not in ["sb","nosb"]:
-                raise ValueError("Invalid SMT type. Choose 'sb' or 'nosb'.")
-            self.solver = SMT_Solver(os.path.join(base_dir, "models",
-                                                 "smt"), smt_type)
+        # elif self.solver_type == "smt":
+        #     from models.smt.SMT_Solver import SMT_Solver
+        #     self.solver = SMT_Solver(os.path.join(base_dir, "models", "smt"))
         elif self.solver_type == "sat":
-            if sat_type not in ["sat","sat_hybrid"]:
-                raise ValueError("Invalid SAT type. Choose 'sat' or 'sat_hybrid'.")
-            self.solver = SAT_Solver(os.path.join(base_dir, "models",
-                                                   "sat"), sat_type)
+            self.solver = SAT_Solver(os.path.join(base_dir, "models", "sat"))
         else:
             raise ValueError("Invalid solver type: choose 'cp','mip','smt', or 'sat'.")
 
@@ -325,5 +390,5 @@ class UnifiedSolver:
 
 if __name__ == "__main__":
     solver_type = sys.argv[1] if len(sys.argv)>1 else "mip"
-    unified = UnifiedSolver(solver_type, base_dir=".", output_dir="Results")
+    unified = UnifiedSolver(solver_type, base_dir=".", output_dir="res")
     unified.solve_all_instances()
