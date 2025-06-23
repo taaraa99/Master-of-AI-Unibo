@@ -1,0 +1,4 @@
+minizinc
+pulp
+z3-solver
+ortools

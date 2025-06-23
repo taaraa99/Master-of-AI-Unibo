@@ -229,56 +229,74 @@ class MIPSolver:
         print(f"All MIP approaches for instance {inst_id} written to {out_file}")
 
 
-# SATSolver supports SAT-like routing with various heuristics
-class SATSolver:
-    """
-    Delegates to the models.sat.runner module via command-line,
-    passing through search, knn, lns, lns-iters, destroy-frac, timeout, and outdir.
-    """
-    def __init__(self, search: str = 'binary', timeout_s: int = 300,
-                 knn: int = None, lns: bool = False,
-                 lns_iters: int = None, destroy_frac: float = None,
-                 base_outdir: str = 'res/sat'):
-        self.search = search
-        self.timeout_s = timeout_s
-        self.knn = knn
-        self.lns = lns
-        self.lns_iters = lns_iters
-        self.destroy_frac = destroy_frac
-        self.base_outdir = base_outdir
-        import subprocess
-        self.subprocess = subprocess
+# SAT and SMT solvers remain unchanged
+class SAT_Solver:
+    def __init__(self, models_dir, sat_solver_type):
+        self.models_dir = os.path.abspath(models_dir)
+        self.sat_solver_type = sat_solver_type
+        if not os.path.exists(self.models_dir):
+            raise FileNotFoundError(f"Model directory '{self.models_dir}' does not exist.")
+        self.model_files = [os.path.join(self.models_dir, f) for f in os.listdir(self.models_dir) if f.endswith(".py")]
+        if not self.model_files:
+            raise FileNotFoundError(f"No SAT model files in '{self.models_dir}'.")
+        self.sat_model = self._load_model()
 
-    def solve(self, instance_file: str, _: str):
-        # Build command to call runner
-        cmd = [sys.executable, '-m', 'models.sat.runner',
-               f'--search={self.search}', f'--timeout={self.timeout_s}',
-               f'--outdir={self.base_outdir}']
-        if self.knn is not None:
-            cmd.append(f'--knn={self.knn}')
-        if self.lns:
-            cmd.append('--lns')
-            if self.lns_iters is not None:
-                cmd.append(f'--lns-iters={self.lns_iters}')
-            if self.destroy_frac is not None:
-                cmd.append(f'--destroy-frac={self.destroy_frac}')
-        # Ensure output dir exists
-        os.makedirs(self.base_outdir, exist_ok=True)
-        # Invoke runner
-        print(f"[SATSolver] Running: {' '.join(cmd)}")
-        result = self.subprocess.run(cmd, capture_output=True, text=True)
-        # Relay output
-        print(result.stdout)
-        if result.returncode != 0:
-            print(result.stderr, file=sys.stderr)
+    def _load_model(self):
+        model_filename = f"{self.sat_solver_type}.py"
+        model_path = os.path.join(self.models_dir, model_filename)
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"SAT model '{model_filename}' not found in '{self.models_dir}'.")
+        spec = importlib.util.spec_from_file_location("sat_model", model_path)
+        sat_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sat_module)
+        model_function = getattr(sat_module, "sat_model", None)
+        if not model_function:
+            raise AttributeError(f"Function 'sat_model' not found in '{model_filename}'.")
+        return model_function
 
+    def read_instance(self, file_path):
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+        return {
+            "m": int(lines[0].strip()),
+            "n": int(lines[1].strip()),
+            "l": list(map(int, lines[2].split())),
+            "s": list(map(int, lines[3].split())),
+            "D": [list(map(int, l.split())) for l in lines[4:]]
+        }
+
+    def solve(self, instance_file, output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        inst = self.read_instance(instance_file)
+        result = self.sat_model(inst["m"], inst["n"], inst["s"], inst["l"], inst["D"], timeout_duration=300)
+        routes = result["sol"]
+        dists = []
+        for r in routes:
+            if r:
+                dd = inst["D"][0][r[0]]
+                for i in range(len(r)-1): dd += inst["D"][r[i]][r[i+1]]
+                dd += inst["D"][r[-1]][0]
+                dists.append(dd)
+            else:
+                dists.append(0)
+        maxd = max(dists) if dists else 0
+        updated = {"time": (datetime.now()-datetime.now()).total_seconds(),
+                   "optimal": result.get("optimal", False),
+                   "obj": maxd,
+                   "sol": routes}
+        base = os.path.splitext(os.path.basename(instance_file))[0]
+        inst_id = re.search(r"\d+", base).group(0)
+        out = os.path.join(output_dir, f"{inst_id}.json")
+        with open(out, 'w') as jf:
+            json.dump(updated, jf, indent=4)
+        print(f"SAT solution saved as {inst_id}.json")
 
 
 class UnifiedSolver:
-    def __init__(self, solver_type, base_dir, outdir, search, timeout, knn, lns, lns_iters, destroy_frac):
+    def __init__(self, solver_type, base_dir=".", output_dir="res", smt_type=None, sat_type=None):
         self.solver_type = solver_type.lower()
         self.instances_dir = os.path.join(base_dir, "Instances")
-        self.output_dir = os.path.join(base_dir, outdir, solver_type)
+        self.output_dir = os.path.join(base_dir, output_dir, solver_type)
         os.makedirs(self.output_dir, exist_ok=True)
         if self.solver_type == "cp":
             self.solver = CPSolver()
@@ -291,17 +309,21 @@ class UnifiedSolver:
             self.solver = SMT_Solver(os.path.join(base_dir, "models",
                                                  "smt"), smt_type)
         elif self.solver_type == "sat":
-            self.solver=SATSolver(search=search, timeout_s=timeout,
-                                  knn=knn, lns=lns, lns_iters=lns_iters,
-                                  destroy_frac=destroy_frac)
+            if sat_type not in ["sat","sat_hybrid"]:
+                raise ValueError("Invalid SAT type. Choose 'sat' or 'sat_hybrid'.")
+            self.solver = SAT_Solver(os.path.join(base_dir, "models",
+                                                   "sat"), sat_type)
         else:
             raise ValueError("Invalid solver type: choose 'cp','mip','smt', or 'sat'.")
 
     def solve_all_instances(self):
-            for fn in os.listdir(self.instances_dir):
-                if fn.endswith(".dat"):
-                    path = os.path.join(self.instances_dir, fn)
-                    self.solver.solve(path, self.output_dir)
+        for fn in os.listdir(self.instances_dir):
+            if fn.endswith(".dat"):
+                path = os.path.join(self.instances_dir, fn)
+                self.solver.solve(path, self.output_dir)
 
 
-    
+if __name__ == "__main__":
+    solver_type = sys.argv[1] if len(sys.argv)>1 else "mip"
+    unified = UnifiedSolver(solver_type, base_dir=".", output_dir="Results")
+    unified.solve_all_instances()
