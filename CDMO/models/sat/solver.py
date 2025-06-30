@@ -26,18 +26,6 @@ def build_solver(
 
     # Compute neighbor sets for kNN (or full graph if knn=None)
     nodes = list(range(n+1))
-    # if knn is None:
-    #     neighbors: Dict[int, Set[int]] = {a: set(nodes) for a in nodes}
-    # else:
-    #     neighbors = {a: set() for a in nodes}
-    #     for a in nodes:
-    #         dists = sorted((D[a][b], b) for b in nodes if b != a)
-    #         for _, b in dists[:knn]:
-    #             neighbors[a].add(b)
-    #     # ensure depot connects to all nodes
-    #     for a in nodes:
-    #         neighbors[a].add(dep)
-    #         neighbors[dep].add(a)
     if knn is None:
         neighbors = {a: set(nodes) for a in nodes}
     else:

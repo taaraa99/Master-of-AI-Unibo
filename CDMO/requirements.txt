@@ -1,4 +1,4 @@
 minizinc
 pulp
 z3-solver
-ortools
+ortools==9.11.4210

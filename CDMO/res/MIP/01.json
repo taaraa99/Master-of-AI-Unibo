@@ -1,6 +1,6 @@
 {
     "HIGHS": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
@@ -17,7 +17,7 @@
         ]
     },
     "HIGHS+SB": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
@@ -34,7 +34,7 @@
         ]
     },
     "HIGHS+SB+IMPLIED": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
@@ -51,7 +51,7 @@
         ]
     },
     "HIGHS+SB+IMPLIED+WM": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
@@ -68,7 +68,7 @@
         ]
     },
     "HIGHS+SB+IMPLIED+WM+CUT": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
@@ -85,7 +85,7 @@
         ]
     },
     "CBC": {
-        "time": 0,
+        "time": 1,
         "optimal": true,
         "obj": 14.0,
         "sol": [
