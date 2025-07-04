@@ -27,9 +27,9 @@
             ]
         ]
     },
-    "binary_knn5": {
+    "binary_knn6": {
         "time": 0,
-        "optimal": true,
+        "optimal": false,
         "obj": 206,
         "sol": [
             [
@@ -43,7 +43,7 @@
     },
     "lns": {
         "time": 0,
-        "optimal": true,
+        "optimal": false,
         "obj": 206,
         "sol": [
             [
@@ -55,9 +55,9 @@
             ]
         ]
     },
-    "lns_knn5": {
+    "lns_knn6": {
         "time": 0,
-        "optimal": true,
+        "optimal": false,
         "obj": 206,
         "sol": [
             [

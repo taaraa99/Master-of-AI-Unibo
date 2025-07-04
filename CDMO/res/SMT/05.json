@@ -1,6 +1,6 @@
 {
-    "smt_linear": {
-        "time": 0,
+    "smt_auto": {
+        "time": 0.02,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -13,8 +13,8 @@
             ]
         ]
     },
-    "smt_linear_greedy": {
-        "time": 0,
+    "smt_base": {
+        "time": 0.02,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -27,8 +27,8 @@
             ]
         ]
     },
-    "smt_binary": {
-        "time": 0,
+    "smt_greedy": {
+        "time": 0.03,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -41,8 +41,8 @@
             ]
         ]
     },
-    "smt_binary_greedy": {
-        "time": 0,
+    "smt_sorted": {
+        "time": 0.03,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -55,8 +55,8 @@
             ]
         ]
     },
-    "smt_binary_sorted": {
-        "time": 0,
+    "smt_greedy_sorted": {
+        "time": 0.03,
         "optimal": true,
         "obj": 206,
         "sol": [
