@@ -1,0 +1,84 @@
+{
+    "HIGHS": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "HIGHS_SB": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "HIGHS_SB_IMPLIED": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "HIGHS_SB_IMPLIED_WM": {
+        "time": 0,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": []
+    },
+    "HIGHS_SB_IMPLIED_WM_CUT": {
+        "time": 0,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": []
+    },
+    "CBC": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "SCIP": {
+        "time": 0,
+        "optimal": true,
+        "obj": 206.0,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    }
+}
