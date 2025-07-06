@@ -1,26 +1,26 @@
 {
-    "linear": {
-        "time": 0,
+    "sat_linear": {
+        "time": 2,
         "optimal": true,
         "obj": 12,
         "sol": [
             [
                 5,
-                6,
-                3
-            ],
-            [
                 4,
                 2
             ],
             [
-                1,
-                7
+                7,
+                3
+            ],
+            [
+                6,
+                1
             ]
         ]
     },
-    "binary": {
-        "time": 0,
+    "sat_binary": {
+        "time": 3,
         "optimal": true,
         "obj": 12,
         "sol": [
@@ -34,68 +34,8 @@
                 6
             ],
             [
-                1,
-                7
-            ]
-        ]
-    },
-    "binary_knn6": {
-        "time": 0,
-        "optimal": false,
-        "obj": 12,
-        "sol": [
-            [
-                5,
-                6,
-                3
-            ],
-            [
-                2,
-                4
-            ],
-            [
                 7,
                 1
-            ]
-        ]
-    },
-    "lns": {
-        "time": 3,
-        "optimal": false,
-        "obj": 12,
-        "sol": [
-            [
-                5,
-                4,
-                2
-            ],
-            [
-                7,
-                3
-            ],
-            [
-                6,
-                1
-            ]
-        ]
-    },
-    "lns_knn6": {
-        "time": 3,
-        "optimal": false,
-        "obj": 12,
-        "sol": [
-            [
-                5,
-                4,
-                2
-            ],
-            [
-                7,
-                3
-            ],
-            [
-                1,
-                6
             ]
         ]
     }

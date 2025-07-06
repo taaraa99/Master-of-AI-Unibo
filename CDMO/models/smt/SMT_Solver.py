@@ -1,736 +1,529 @@
-# import time
-# import json
-# import re
-# import math
-# import os
-# import traceback
-# from z3 import *
-
-# class SMT_Solver:
-#     """
-#     A SMT solver for the MCP problem.
-    
-#     Some features of the model:
-#     1.  **Uses the native Optimization Engine:** Uses Z3's `Optimize` class for more efficient handling
-#         of the min-max objective, replacing manual search loops.
-#     2.  **Valid Inequalities:** Adds explicit linking constraints between item assignment
-#         and arc usage to improve constraint propagation.
-#     3.  **Heuristic-Driven:** Includes an "auto" mode that combines pre-sorting and a powerful
-#         local search heuristic to provide the solver with an excellent starting point.
-#     """
-
-#     def __init__(self, timeout: int = 300):
-#         """
-#         Initializes the solver with a timeout and a suite of experimental configurations.
-#         """
-#         self.timeout = timeout
-#         # --- Configurations for experiments ---
-#         self.configs = [
-#             ("smt_auto",             {"use_greedy": True,  "use_sorting": True}),
-#             ("smt_base",             {"use_greedy": False, "use_sorting": False}),
-#             ("smt_greedy",           {"use_greedy": True,  "use_sorting": False}),
-#             ("smt_sorted",           {"use_greedy": False, "use_sorting": True}),
-#             ("smt_greedy_sorted",    {"use_greedy": True,  "use_sorting": True}),
-#         ]
-
-#     # ─────────────────────────── Helper methods ───────────────────────────
-#     @staticmethod
-#     def _exactly_one(bools: list) -> BoolRef:
-#         """Ensures exactly one of the booleans in the list is true."""
-#         return PbEq([(b, 1) for b in bools], 1)
-        
-#     @staticmethod
-#     def _lex_leq(a: list, b: list) -> BoolRef:
-#         """Adds a lexicographical ordering constraint (a <= b) to break symmetry."""
-#         less = And(Not(a[0]), b[0])
-#         equal = a[0] == b[0]
-#         for i in range(1, len(a)):
-#             less = Or(less, And(equal, Not(a[i]), b[i]))
-#             equal = And(equal, a[i] == b[i])
-#         return Or(equal, less)
-
-#     # ─────────────────── Advanced Heuristic Pre-Solver ───────────────────
-    
-#     def _cheapest_insertion_heuristic(self, m: int, n: int, caps: list, sizes: list, D: list) -> (list, int):
-#         """
-#         Stage 1: Constructs an initial feasible solution using cheapest insertion.
-#         Item IDs are 1-based, but all distance matrix access is 0-based.
-#         """
-#         depot_idx = n # 0-based index for distance matrix
-#         routes = [[] for _ in range(m)]
-#         loads = [0] * m
-#         unassigned_items = list(range(1, n + 1))
-        
-#         while unassigned_items:
-#             best_cost_increase, best_insertion = float('inf'), None
-#             for item_idx_in_list, item_id in enumerate(unassigned_items):
-#                 for k in range(m):
-#                     if loads[k] + sizes[item_id] <= caps[k]:
-#                         for pos in range(len(routes[k]) + 1):
-#                             current_route = routes[k]
-#                             # Convert 1-based item IDs to 0-based matrix indices
-#                             prev_node_idx = depot_idx if pos == 0 else current_route[pos-1] - 1
-#                             next_node_idx = depot_idx if pos == len(current_route) else current_route[pos] - 1
-#                             item_d_idx = item_id - 1
-                            
-#                             cost_increase = (D[prev_node_idx][item_d_idx] + D[item_d_idx][next_node_idx] - D[prev_node_idx][next_node_idx])
-                            
-#                             if cost_increase < best_cost_increase:
-#                                 best_cost_increase = cost_increase
-#                                 best_insertion = (item_idx_in_list, k, pos)
-        
-#             if best_insertion:
-#                 item_idx_in_list, k, pos = best_insertion
-#                 item_to_add = unassigned_items.pop(item_idx_in_list)
-#                 routes[k].insert(pos, item_to_add)
-#                 loads[k] += sizes[item_to_add]
-#             else:
-#                 return None, float('inf')
-        
-#         return routes, 0 # Objective is calculated by the calling function
-
-#     def _local_search_heuristic(self, m: int, n: int, caps: list, sizes: list, D: list) -> (list, int):
-#         """
-#         A powerful two-stage heuristic:
-#         1. Constructs a solution using cheapest insertion.
-#         2. Improves the solution using a 2-Opt local search.
-#         """
-#         # --- Stage 1: Construction ---
-#         routes, _ = self._cheapest_insertion_heuristic(m, n, caps, sizes, D)
-#         if routes is None:
-#             return None, float('inf')
-
-#         # --- Stage 2: Improvement (2-Opt) ---
-#         depot_idx = n
-#         improvement_found = True
-#         while improvement_found:
-#             improvement_found = False
-#             for k in range(m):
-#                 if len(routes[k]) < 2: continue
-
-#                 # Create a full tour with 0-based depot/customer indices for calculation
-#                 tour = [depot_idx] + [node - 1 for node in routes[k]] + [depot_idx]
-                
-#                 # Using "best improvement" strategy for 2-opt
-#                 best_delta = 0
-#                 best_move = None
-#                 for i in range(len(tour) - 3):
-#                     for j in range(i + 2, len(tour) - 1):
-#                         node_i, node_i1 = tour[i], tour[i+1]
-#                         node_j, node_j1 = tour[j], tour[j+1]
-                        
-#                         original_cost = D[node_i][node_i1] + D[node_j][node_j1]
-#                         new_cost = D[node_i][node_j] + D[node_i1][node_j1]
-#                         delta = new_cost - original_cost
-
-#                         if delta < best_delta:
-#                             best_delta = delta
-#                             best_move = (i, j)
-
-#                 if best_move:
-#                     i, j = best_move
-#                     tour[i+1:j+1] = tour[i+1:j+1][::-1] # Reverse segment to apply swap
-#                     routes[k] = [node + 1 for node in tour[1:-1]] # Update route (1-based)
-#                     improvement_found = True
-
-#         # --- Stage 3: Recalculate Final Objective ---
-#         max_dist = 0
-#         for k in range(m):
-#             dist, last_node_idx = 0, depot_idx
-#             for item_id in routes[k]:
-#                 item_idx = item_id - 1
-#                 dist += D[last_node_idx][item_idx]
-#                 last_node_idx = item_idx
-#             dist += D[last_node_idx][depot_idx]
-#             if dist > max_dist:
-#                 max_dist = dist
-                
-#         print(f"Advanced heuristic found initial solution with max route: {max_dist}")
-#         return routes, max_dist
-
-#     # ─────────────────────────── Core Solver Logic ───────────────────────────
-
-#     def _parse_instance(self, file_path: str):
-#         with open(file_path, 'r') as f: content = f.read()
-#         tokens = re.split(r'\s+', content.strip())
-#         m, n = int(tokens.pop(0)), int(tokens.pop(0))
-#         caps = [int(tokens.pop(0)) for _ in range(m)]
-#         sizes = [0] + [int(tokens.pop(0)) for _ in range(n)]
-#         D_flat = [int(t) for t in tokens if t]
-#         D = [D_flat[i*(n+1):(i+1)*(n+1)] for i in range(n+1)]
-#         return m, n, caps, sizes, D
-
-#     def _build_model(self, m: int, n: int, caps: list, sizes: list, D: list):
-#         optimizer = Optimize()
-#         depot_idx = n
-#         x = [[Bool(f"x_{k}_{j}") for j in range(n)] for k in range(m)]
-#         y = [[[Bool(f"y_{k}_{i}_{j}") for j in range(n + 1)] for i in range(n + 1)] for k in range(m)]
-#         u = [[Int(f"u_{k}_{j}") for j in range(n)] for k in range(m)]
-#         rho = Int("rho")
-
-#         for k in range(m):
-#             optimizer.add(Sum([If(x[k][j], sizes[j+1], 0) for j in range(n)]) <= caps[k])
-#         for j in range(n):
-#             optimizer.add(self._exactly_one([x[k][j] for k in range(m)]))
-#         for k in range(m):
-#             optimizer.add(PbLe([(y[k][depot_idx][j], 1) for j in range(n)], 1))
-#             for j in range(n):
-#                 num_incoming = Sum([If(y[k][i][j], 1, 0) for i in range(n + 1) if i != j])
-#                 num_outgoing = Sum([If(y[k][j][i], 1, 0) for i in range(n + 1) if i != j])
-#                 optimizer.add(If(x[k][j], num_incoming == 1, num_incoming == 0))
-#                 optimizer.add(If(x[k][j], num_outgoing == 1, num_outgoing == 0))
-#             optimizer.add(Sum([If(y[k][depot_idx][j], 1, 0) for j in range(n)]) == Sum([If(y[k][j][depot_idx], 1, 0) for j in range(n)]))
-#         for k in range(m):
-#             for j in range(n):
-#                 optimizer.add(Implies(x[k][j], And(u[k][j] >= 1, u[k][j] <= n)))
-#                 optimizer.add(Implies(Not(x[k][j]), u[k][j] == 0))
-#                 optimizer.add(Implies(y[k][depot_idx][j], u[k][j] == 1))
-#                 for i in range(n):
-#                     if i != j:
-#                         optimizer.add(Implies(y[k][i][j], u[k][j] == u[k][i] + 1))
-#         for k in range(m):
-#             for i in range(n):
-#                 for j in range(n):
-#                     if i != j:
-#                         optimizer.add(Implies(y[k][i][j], And(x[k][i], x[k][j])))
-#         for k in range(m):
-#             dist = Sum([If(y[k][i][j], D[i][j], 0) for i in range(n + 1) for j in range(n + 1)])
-#             optimizer.add(rho >= dist)
-#         for k in range(m - 1):
-#             if caps[k] == caps[k+1]:
-#                 optimizer.add(self._lex_leq([x[k][j] for j in range(n)], [x[k+1][j] for j in range(n)]))
-#         optimizer.minimize(rho)
-#         return optimizer, rho, x, y
-
-#     def _solve_with_optimizer(self, optimizer: Optimize, rho: ArithRef, timeout_ms: int, initial_upper_bound=None):
-#         start_time = time.time()
-#         if initial_upper_bound is not None and initial_upper_bound != float('inf'):
-#             print(f"Applying Advanced Heuristic UB: {initial_upper_bound}")
-#             optimizer.add(rho <= initial_upper_bound)
-#         optimizer.set("timeout", max(1, timeout_ms))
-#         status = optimizer.check()
-#         model, is_optimal = None, False
-#         if status == sat:
-#             elapsed_ms = (time.time() - start_time) * 1000
-#             if elapsed_ms < timeout_ms:
-#                 is_optimal = True
-#             model = optimizer.model()
-#             print(f"Solution found. Status: SAT. Optimal: {is_optimal}")
-#         elif status == unknown:
-#             print("Solver timed out (unknown). A sub-optimal solution may be available.")
-#             try:
-#                 model = optimizer.model()
-#             except Z3Exception:
-#                 model = None
-#             is_optimal = False
-#         else: # unsat
-#             print("Problem is UNSAT (no solution exists).")
-#             is_optimal = True
-#         return model, is_optimal
-
-#     def _extract_paths(self, model: ModelRef, y_vars, m: int, n: int, reverse_map=None):
-#         if not model: return [[] for _ in range(m)]
-#         depot_idx_0based = n
-#         if reverse_map is None:
-#             reverse_map = {i: i + 1 for i in range(n)}
-#         all_routes = []
-#         for k in range(m):
-#             arcs = []
-#             for i in range(n + 1):
-#                 for j in range(n + 1):
-#                     if is_true(model.eval(y_vars[k][i][j], model_completion=True)):
-#                         arcs.append((i, j))
-#             if not arcs:
-#                 all_routes.append([]); continue
-#             tour_map = {i: j for i, j in arcs}
-#             if depot_idx_0based not in tour_map:
-#                 all_routes.append([]); continue
-#             current_node = tour_map[depot_idx_0based]
-#             route = []
-#             visited_count = 0
-#             while current_node != depot_idx_0based and visited_count < n:
-#                 route.append(reverse_map[current_node])
-#                 current_node = tour_map.get(current_node, depot_idx_0based)
-#                 visited_count += 1
-#             all_routes.append(route)
-#         return all_routes
-
-#     def solve(self, instance_file: str, output_dir: str):
-#         os.makedirs(output_dir, exist_ok=True)
-#         base_name = os.path.splitext(os.path.basename(instance_file))[0]
-#         inst_id = re.search(r'\d+', base_name).group(0)
-#         results = {}
-
-#         for name, config in self.configs:
-#             print(f"----- [SMT Solver Enhanced] -----")
-#             print(f"Running approach: {name} for instance: {inst_id}")
-            
-#             total_start_time = time.time()
-#             m, n, caps, original_sizes, original_D = self._parse_instance(instance_file)
-            
-#             use_greedy = config.get("use_greedy", False)
-#             use_sorting = config.get("use_sorting", False)
-#             timeout_ms = self.timeout * 1000
-            
-#             sizes_to_solve, D_to_solve = original_sizes, original_D
-#             reverse_item_map = {i: i + 1 for i in range(n)}
-
-#             if use_sorting and n > 0:
-#                 print("Applying item pre-sorting by remoteness...")
-#                 original_indices_0based = sorted(range(n), key=lambda j: original_D[j][n] + original_D[n][j], reverse=True)
-#                 sorted_to_original_map = {new_idx: orig_idx for new_idx, orig_idx in enumerate(original_indices_0based)}
-#                 reverse_item_map = {new_idx: sorted_to_original_map[new_idx] + 1 for new_idx in range(n)}
-#                 sizes_to_solve = [0] + [original_sizes[sorted_to_original_map[i] + 1] for i in range(n)]
-#                 new_D = [[0] * (n + 1) for _ in range(n + 1)]
-#                 for i in range(n):
-#                     for j in range(n):
-#                         orig_i, orig_j = sorted_to_original_map[i], sorted_to_original_map[j]
-#                         new_D[i][j] = original_D[orig_i][orig_j]
-#                 for i in range(n):
-#                     orig_i = sorted_to_original_map[i]
-#                     new_D[i][n], new_D[n][i] = original_D[orig_i][n], original_D[n][orig_i]
-#                 new_D[n][n] = original_D[n][n]
-#                 D_to_solve = new_D
-
-#             model, is_optimal = None, False
-            
-#             try:
-#                 presolve_start_time = time.time()
-                
-#                 optimizer, rho, x, y = self._build_model(m, n, caps, sizes_to_solve, D_to_solve)
-                
-#                 greedy_ub = None
-#                 if use_greedy:
-#                     # UPDATED TO USE THE ADVANCED HEURISTIC
-#                     _, greedy_ub = self._local_search_heuristic(m, n, caps, sizes_to_solve, D_to_solve)
-                
-#                 presolve_time_ms = (time.time() - presolve_start_time) * 1000
-#                 remaining_timeout_ms = timeout_ms - int(presolve_time_ms)
-                
-#                 if remaining_timeout_ms > 0:
-#                     model, is_optimal = self._solve_with_optimizer(optimizer, rho, remaining_timeout_ms, initial_upper_bound=greedy_ub)
-
-#             except Exception as e:
-#                 print(f"[SMT Solver] ERROR on instance {base_name} with {name}: {e}")
-#                 traceback.print_exc()
-
-#             solve_time_sec = time.time() - total_start_time
-#             final_obj, final_sol = -1, [[] for _ in range(m)]
-
-#             if model:
-#                 final_obj = model.eval(rho).as_long()
-#                 final_sol = self._extract_paths(model, y, m, n, reverse_map=reverse_item_map)
-            
-#             if solve_time_sec >= self.timeout:
-#                 is_optimal = False
-
-#             results[name] = {
-#                 "time": min(self.timeout, round(solve_time_sec, 2)),
-#                 "optimal": is_optimal,
-#                 "obj": int(final_obj),
-#                 "sol": final_sol
-#             }
-
-#         out_path = os.path.join(output_dir, f"{inst_id}.json")
-#         with open(out_path, "w") as jf:
-#             json.dump(results, jf, indent=4)
-#         print(f"Enhanced SMT results for instance {inst_id} written to {out_path}\n")
-
-
-import time
-import json
-import re
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+smt_search.py — Loop over all .dat instances and solve via SMT
+              with options for:
+                  • binary, linear, or native Z3 optimisation,
+                  • Large Neighborhood Search (LNS) refinement,
+                  • k-Nearest-Neighbor (kNN) edge pruning.
+"""
+from __future__ import annotations
+import argparse
+import sys
 import math
-import os
-import traceback
-from z3 import *
+import json
+import random
+from pathlib import Path
+from time import perf_counter
+from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional, Set
 
-class SMT_Solver:
-    """
-    A SMT solver for the MCP problem.
-    
-    Some features of the model:
-    1.  **Uses the native Optimization Engine:** Uses Z3's `Optimize` class for more efficient handling
-        of the min-max objective, replacing manual search loops.
-    2.  **Valid Inequalities:** Adds explicit linking constraints between item assignment
-        and arc usage to improve constraint propagation.
-    3.  **Heuristic-Driven:** Includes an "auto" mode that combines pre-sorting and a powerful
-        local search heuristic to provide the solver with an excellent starting point.
-    """
 
-    def __init__(self, timeout: int = 300):
-        """
-        Initializes the solver with a timeout and a suite of experimental configurations.
-        """
-        self.timeout = timeout
-        # --- Configurations for experiments ---
-        self.configs = [
-            ("smt_auto",            {"use_greedy": True,  "use_sorting": True}),
-            ("smt_base",            {"use_greedy": False, "use_sorting": False}),
-            ("smt_greedy",          {"use_greedy": True,  "use_sorting": False}),
-            ("smt_sorted",          {"use_greedy": False, "use_sorting": True}),
-            ("smt_greedy_sorted",   {"use_greedy": True,  "use_sorting": True}),
-        ]
+from z3 import (
+    Bool, Int, Solver, Optimize, If, Implies, Not, Or, And,
+    PbEq, PbLe, sat, unknown, ModelRef, is_true
+)
 
-    # ─────────────────────────── Helper methods ───────────────────────────
-    @staticmethod
-    def _exactly_one(bools: list) -> BoolRef:
-        """Ensures exactly one of the booleans in the list is true."""
-        return PbEq([(b, 1) for b in bools], 1)
-        
-    @staticmethod
-    def _lex_leq(a: list, b: list) -> BoolRef:
-        """Adds a lexicographical ordering constraint (a <= b) to break symmetry."""
-        less = And(Not(a[0]), b[0])
-        equal = a[0] == b[0]
-        for i in range(1, len(a)):
-            less = Or(less, And(equal, Not(a[i]), b[i]))
-            equal = And(equal, a[i] == b[i])
-        return Or(equal, less)
+# ────────────────────────────────────────────────────────────────────────────────
+# Data structure for instances
+# just a little data holder for our problem, makes passing stuff around easier.
+# ────────────────────────────────────────────────────────────────────────────────
+@dataclass(slots=True)
+class Instance:
+    m: int
+    n: int
+    cap: List[int]
+    size: List[int]
+    D: List[List[int]]
 
-    # ─────────────────── Advanced Heuristic Pre-Solver ───────────────────
-    
-    def _cheapest_insertion_heuristic(self, m: int, n: int, caps: list, sizes: list, D: list) -> (list, int):
-        """
-        Stage 1: Constructs an initial feasible solution using cheapest insertion.
-        Item IDs are 1-based, but all distance matrix access is 0-based.
-        """
-        depot_idx = n # 0-based index for distance matrix
-        routes = [[] for _ in range(m)]
-        loads = [0] * m
-        unassigned_items = list(range(1, n + 1))
-        
-        while unassigned_items:
-            best_cost_increase, best_insertion = float('inf'), None
-            for item_idx_in_list, item_id in enumerate(unassigned_items):
-                for k in range(m):
-                    if loads[k] + sizes[item_id] <= caps[k]:
-                        for pos in range(len(routes[k]) + 1):
-                            current_route = routes[k]
-                            # Convert 1-based item IDs to 0-based matrix indices
-                            prev_node_idx = depot_idx if pos == 0 else current_route[pos-1] - 1
-                            next_node_idx = depot_idx if pos == len(current_route) else current_route[pos] - 1
-                            item_d_idx = item_id - 1
-                            
-                            cost_increase = (D[prev_node_idx][item_d_idx] + D[item_d_idx][next_node_idx] - D[prev_node_idx][next_node_idx])
-                            
-                            if cost_increase < best_cost_increase:
-                                best_cost_increase = cost_increase
-                                best_insertion = (item_idx_in_list, k, pos)
-            
-            if best_insertion:
-                item_idx_in_list, k, pos = best_insertion
-                item_to_add = unassigned_items.pop(item_idx_in_list)
-                routes[k].insert(pos, item_to_add)
-                loads[k] += sizes[item_to_add]
-            else:
-                # This item cannot be assigned to any courier
-                return None, float('inf')
-        
-        return routes, 0 # Objective is calculated by the calling function
+    @property
+    def depot(self) -> int:
+        return self.n
 
-    def _local_search_heuristic(self, m: int, n: int, caps: list, sizes: list, D: list) -> (list, int):
-        """
-        A powerful two-stage heuristic:
-        1. Constructs a solution using cheapest insertion.
-        2. Improves the solution using a 2-Opt local search.
-        """
-        # --- Stage 1: Construction ---
-        routes, _ = self._cheapest_insertion_heuristic(m, n, caps, sizes, D)
-        if routes is None:
-            return None, float('inf')
+# ────────────────────────────────────────────────────────────────────────────────
+# Loading instances from .dat files
+# this just reads the .dat text file and stuffs it into our Instance object
+# ────────────────────────────────────────────────────────────────────────────────
+def load_instance(p: Path) -> Instance:
+    tok = p.read_text().split()
+    it = iter(tok)
+    m = int(next(it))
+    n = int(next(it))
+    cap  = [int(next(it)) for _ in range(m)]
+    size = [int(next(it)) for _ in range(n)]
+    flat = [int(next(it)) for _ in range((n+1)*(n+1))]
+    D = [flat[r*(n+1):(r+1)*(n+1)] for r in range(n+1)]
+    return Instance(m, n, cap, size, D)
 
-        # --- Stage 2: Improvement (2-Opt) ---
-        depot_idx = n
-        improvement_found = True
-        while improvement_found:
-            improvement_found = False
-            for k in range(m):
-                if len(routes[k]) < 2: continue
+# ────────────────────────────────────────────────────────────────────────────────
+# Build Z3 solver/optimizer with SMT encoding + optional kNN pruning
+# this is the heart of the model, where we tell Z3 all the rules of the game.
+# ────────────────────────────────────────────────────────────────────────────────
+def _populate_common_constraints(
+    s: Solver | Optimize,
+    inst: Instance,
+    knn: Optional[int] = None
+) -> Tuple[Dict[Tuple[int,int,int], Bool], Dict[Tuple[int,int], Bool]]:
+    m, n, dep, D, cap, siz = inst.m, inst.n, inst.depot, inst.D, inst.cap, inst.size
+    nodes = list(range(n+1))
 
-                # Create a full tour with 0-based depot/customer indices for calculation
-                tour = [depot_idx] + [node - 1 for node in routes[k]] + [depot_idx]
-                
-                # Using "best improvement" strategy for 2-opt
-                best_delta = 0
-                best_move = None
-                for i in range(len(tour) - 3):
-                    for j in range(i + 2, len(tour) - 1):
-                        node_i, node_i1 = tour[i], tour[i+1]
-                        node_j, node_j1 = tour[j], tour[j+1]
-                        
-                        original_cost = D[node_i][node_i1] + D[node_j][node_j1]
-                        new_cost = D[node_i][node_j] + D[node_i1][node_j1]
-                        delta = new_cost - original_cost
+    # --- k-Nearest-Neighbor Pruning ---
+    # A neat trick to make things faster. if we use knn, we dont look at all
+    # possible edges, just the ones between neighbors that are close to each other.
+    # Cuts down the problem size a lot.
+    if knn is None:
+        neighbors: Dict[int, Set[int]] = {a: set(nodes) for a in nodes}
+    else:
+        neighbors = {a: set() for a in nodes}
+        for a in nodes:
+            # here we're sorting all other nodes by distance to find the closest ones
+            dists = sorted((D[a][b], b) for b in nodes if b != a)
+            for _, b in dists[:knn]:
+                neighbors[a].add(b)
+        # always make sure the depot is a neighbor so we can get back home
+        for a in nodes:
+            neighbors[a].add(dep)
+            neighbors[dep].add(a)
 
-                        if delta < best_delta:
-                            best_delta = delta
-                            best_move = (i, j)
+    # --- Defining our variables ---
+    # these are all the things Z3 gets to decide for us.
+    v_vars: Dict[Tuple[int,int], Bool] = {} # is item j on truck i? yes or no.
+    e_vars: Dict[Tuple[int,int,int], Bool] = {} # is truck i going from a to b? yes or no.
+    u_vars: Dict[Tuple[int,int], Int] = {}   # this ones for stopping subtours. whats the position of a stop in a tour.
 
-                if best_move:
-                    i, j = best_move
-                    tour[i+1:j+1] = tour[i+1:j+1][::-1] # Reverse segment to apply swap
-                    routes[k] = [node + 1 for node in tour[1:-1]] # Update route (1-based)
-                    improvement_found = True
-
-        # --- Stage 3: Recalculate Final Objective ---
-        max_dist = self._recalculate_objective(m, n, D, routes)
-                
-        print(f"Advanced heuristic found initial solution with max route: {max_dist}")
-        return routes, max_dist
-
-    # ─────────────────────────── Core Solver Logic ───────────────────────────
-
-    def _parse_instance(self, file_path: str):
-        with open(file_path, 'r') as f: content = f.read()
-        tokens = re.split(r'\s+', content.strip())
-        m, n = int(tokens.pop(0)), int(tokens.pop(0))
-        caps = [int(tokens.pop(0)) for _ in range(m)]
-        sizes = [0] + [int(tokens.pop(0)) for _ in range(n)] # 1-based indexing for sizes
-        D_flat = [int(t) for t in tokens if t]
-        D = [D_flat[i*(n+1):(i+1)*(n+1)] for i in range(n+1)]
-        return m, n, caps, sizes, D
-
-    def _build_model(self, m: int, n: int, caps: list, sizes: list, D: list):
-        optimizer = Optimize()
-        depot_idx = n
-        x = [[Bool(f"x_{k}_{j}") for j in range(n)] for k in range(m)]
-        y = [[[Bool(f"y_{k}_{i}_{j}") for j in range(n + 1)] for i in range(n + 1)] for k in range(m)]
-        u = [[Int(f"u_{k}_{j}") for j in range(n)] for k in range(m)]
-        rho = Int("rho")
-
-        # Capacity constraints
-        for k in range(m):
-            optimizer.add(Sum([If(x[k][j], sizes[j+1], 0) for j in range(n)]) <= caps[k])
-        
-        # Each item assigned to exactly one courier
+    # ok lets actually create the z3 variables now
+    for i in range(m):
         for j in range(n):
-            optimizer.add(self._exactly_one([x[k][j] for k in range(m)]))
+            v_vars[(i,j)] = Bool(f"v_{i}_{j}")
 
-        # Flow conservation constraints
-        for k in range(m):
-            # Each courier leaves the depot at most once
-            optimizer.add(PbLe([(y[k][depot_idx][j], 1) for j in range(n)], 1))
-            
-            for j in range(n):
-                num_incoming = Sum([If(y[k][i][j], 1, 0) for i in range(n + 1) if i != j])
-                num_outgoing = Sum([If(y[k][j][i], 1, 0) for i in range(n + 1) if i != j])
-                # If item j is assigned to courier k, one arc in, one arc out. Otherwise zero.
-                optimizer.add(If(x[k][j], num_incoming == 1, num_incoming == 0))
-                optimizer.add(If(x[k][j], num_outgoing == 1, num_outgoing == 0))
-            
-            # Number of arcs leaving depot equals number of arcs entering depot
-            optimizer.add(Sum([If(y[k][depot_idx][j], 1, 0) for j in range(n)]) == Sum([If(y[k][j][depot_idx], 1, 0) for j in range(n)]))
+    for i in range(m):
+        for a in nodes:
+            for b in neighbors[a]: # Only creat edges to neighbors
+                if a != b:
+                    e_vars[(i,a,b)] = Bool(f"e_{i}_{a}_{b}")
 
-        # Subtour elimination (MTZ)
-        for k in range(m):
-            for j in range(n):
-                optimizer.add(Implies(x[k][j], And(u[k][j] >= 1, u[k][j] <= n)))
-                optimizer.add(Implies(Not(x[k][j]), u[k][j] == 0))
-                optimizer.add(Implies(y[k][depot_idx][j], u[k][j] == 1))
-                for i in range(n):
-                    if i != j:
-                        optimizer.add(Implies(y[k][i][j], u[k][j] == u[k][i] + 1))
+    for i in range(m):
+        for k_idx in range(1, n+1):
+            u_vars[(i,k_idx)] = Int(f"u_{i}_{k_idx}")
+
+    # --- Assignment and Capacity Constraints ---
+    # Each item has to be picked up by exactly one truck. no more, no less.
+    for j in range(n):
+        s.add(PbEq([(v_vars[(i,j)], 1) for i in range(m)], 1))
+    
+    # a truck cant carry more than its capacity. obvious really.
+    for i in range(m):
+        s.add(PbLe([(v_vars[(i,j)], siz[j]) for j in range(n)], cap[i]))
+
+    # --- Flow and Subtour Elimination Constraints ---
+    for i in range(m):
+        # just a helper variable to see if truck i is even used.
+        used_i = Bool(f"used_{i}")
+        s.add(used_i == Or(*[v_vars[(i,j)] for j in range(n)]))
         
-        # Linking constraints
-        for k in range(m):
-            for i in range(n):
-                for j in range(n):
-                    if i != j:
-                        optimizer.add(Implies(y[k][i][j], And(x[k][i], x[k][j])))
-
-        # Objective function constraints
-        for k in range(m):
-            dist = Sum([If(y[k][i][j], D[i][j], 0) for i in range(n + 1) for j in range(n + 1)])
-            optimizer.add(rho >= dist)
-
-        # Symmetry breaking
-        for k in range(m - 1):
-            if caps[k] == caps[k+1]:
-                optimizer.add(self._lex_leq([x[k][j] for j in range(n)], [x[k+1][j] for j in range(n)]))
+        # how many times does truck i leave the depot or come back to it
+        out_dep = [(e_vars[(i, dep, b)], 1) for b in neighbors[dep] if b != dep and (i,dep,b) in e_vars]
+        in_dep  = [(e_vars[(i, a, dep)], 1) for a in neighbors[dep] if a != dep and (i,a,dep) in e_vars]
         
-        optimizer.minimize(rho)
-        return optimizer, rho, x, y
+        # if a truck is used, it must leave the depot exactly once.
+        s.add(Implies(used_i, PbEq(out_dep, 1)))
+        # and it must come back to the depot exactly once.
+        s.add(Implies(used_i, PbEq(in_dep, 1)))
+        # if a truck isnt used, it shouldnt go anywhere.
+        s.add(Implies(Not(used_i), PbEq(out_dep, 0)))
+        s.add(Implies(Not(used_i), PbEq(in_dep, 0)))
 
-    def _solve_with_optimizer(self, optimizer: Optimize, rho: ArithRef, timeout_ms: int, initial_upper_bound=None):
-        start_time = time.time()
-        if initial_upper_bound is not None and initial_upper_bound != float('inf'):
-            print(f"Applying Advanced Heuristic UB: {initial_upper_bound}")
-            optimizer.add(rho <= initial_upper_bound)
+        # now for the customers...
+        for j in range(n):
+            # for a customer, if a truck visits it, it must arrive from somewhere and leave to somewhere else.
+            ins  = [(e_vars[(i, a, j)], 1) for a in neighbors[j] if (i,a,j) in e_vars]
+            outs = [(e_vars[(i, j, b)], 1) for b in neighbors[j] if (i,j,b) in e_vars]
             
-        optimizer.set("timeout", max(1, timeout_ms))
-        status = optimizer.check()
-        model, is_optimal = None, False
+            # if truck i visits customer j, then one edge must come in, and one edge must go out.
+            s.add(Implies(v_vars[(i,j)], And(PbEq(ins, 1), PbEq(outs, 1), u_vars[(i, j+1)] >= 1, u_vars[(i, j+1)] <= n)))
+            # if a truck doesnt visit j, no edges should connect to it for that truck.
+            s.add(Implies(Not(v_vars[(i,j)]), And(PbEq(ins, 0), PbEq(outs, 0), u_vars[(i, j+1)] == 0)))
         
-        if status == sat:
-            elapsed_ms = (time.time() - start_time) * 1000
-            # Considered optimal only if solver finishes before timeout
-            if elapsed_ms < timeout_ms:
-                is_optimal = True
-            model = optimizer.model()
-            print(f"Solution found. Status: SAT. Optimal: {is_optimal}")
-        elif status == unknown:
-            print("Solver timed out (unknown). A sub-optimal solution may be available.")
-            try:
-                model = optimizer.model()
-            except Z3Exception:
-                model = None
-            is_optimal = False
-        else: # unsat
-            print("Problem is UNSAT (no solution exists).")
-            is_optimal = True # UNSAT is a proven state
-            
-        return model, is_optimal
+        # --- The magic subtour constraint (MTZ) ---
+        # This stops the solver from making silly little loops that dont include the depot.
+        for (ii,a,b), lit in e_vars.items():
+            if ii != i: continue
+            # if we go from customer a to customer b, b's position number must be one higher than a's.
+            if a < n and b < n: s.add(Implies(lit, u_vars[(i, b+1)] == u_vars[(i, a+1)] + 1))
+            # and if we go from the depot to a node, that node is the first stop.
+            if a == dep and b < n: s.add(Implies(lit, u_vars[(i, b+1)] == 1))
 
-    def _extract_paths(self, model: ModelRef, y_vars, m: int, n: int, reverse_map=None):
-        if not model: return [[] for _ in range(m)]
+    # --- Symmetry Breaking Constraints ---
+    # This is a clever way to make the solver's life easier.
+    first_node = [Int(f"first_node_{i}") for i in range(inst.m)]
+    for i in range(inst.m):
+        # figuring out which customer is first for each truck. just makes the next rule possible.
+        head_cases = [If(e_vars[(i, inst.depot, b)], b+1, 0) for b in neighbors[inst.depot] if b != inst.depot and (i,inst.depot,b) in e_vars]
+        unused_case = If(Not(Or(*[v_vars[(i,j)] for j in range(inst.n)])), inst.n + 2, 0) # give unused trucks a big number
+        s.add(first_node[i] == unused_case + sum(head_cases))
+    
+    # The actual symmetry breaking. if two trucks have the same capacity, we dont care which is which.
+    # so we force one to take the 'earlier' route. stops the solver exploring pointless copies of the same solution.
+    for i in range(inst.m - 1):
+        if inst.cap[i] == inst.cap[i+1]: s.add(first_node[i] <= first_node[i+1])
+    
+    return e_vars, v_vars
+
+# This one builds a model for the binary/linear search. 
+# It just needs to answer 'is a solution with cost B possible?'
+def build_solver(
+    inst: Instance,
+    B: int,
+    knn: Optional[int] = None
+) -> Tuple[Solver, Dict[Tuple[int,int,int], Bool], Dict[Tuple[int,int], Bool]]:
+    s = Solver()
+    e_vars, v_vars = _populate_common_constraints(s, inst, knn)
+    
+    # this is the big one for this function, we add the total distance limit for each truck
+    for i in range(inst.m):
+        dist_terms: List[Tuple[Bool,int]] = []
+        for (ii,a,b), lit in e_vars.items():
+            if ii == i: dist_terms.append((lit, inst.D[a][b]))
+        s.add(PbLe(dist_terms, B))
+    return s, e_vars, v_vars
+
+# This one is for the 'z3' mode. Instead of asking yes/no, we just tell
+# it to find the best (smallest) distance possible.
+def build_optimizer(
+    inst: Instance,
+    knn: Optional[int] = None
+) -> Tuple[Optimize, Dict[Tuple[int,int,int], Bool], Dict[Tuple[int,int], Bool]]:
+    opt = Optimize()
+    e_vars, v_vars = _populate_common_constraints(opt, inst, knn)
+    
+    objective = Int("max_dist")
+    # The objective is to minimize the longest tour of any single truck
+    for i in range(inst.m):
+        dist_terms = [inst.D[a][b] * e_vars[(i,a,b)] for (ii,a,b) in e_vars if ii == i]
+        opt.add(objective >= sum(dist_terms))
+
+    # here we just say... please minimize this for us. much easier.
+    opt.minimize(objective)
+    return opt, e_vars, v_vars
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Solution reconstruction and utility
+# ────────────────────────────────────────────────────────────────────────────────
+# after we have a solution, this adds up the distances for each truck.
+def per_courier_distance(inst: Instance, model: ModelRef, e_vars: Dict[Tuple[int,int,int], Bool]) -> List[int]:
+    dist = [0] * inst.m
+    for (i, a, b), lit in e_vars.items():
+        if is_true(model.eval(lit, model_completion=True)): dist[i] += inst.D[a][b]
+    return dist
+
+# takes the mess of true/false edge variables from the solver and turns it 
+# back into a nice list, a proper route that a person can read.
+def reconstruct_route(inst: Instance, model: ModelRef, e_vars: Dict[Tuple[int,int,int], Bool], courier: int) -> List[int]:
+    dep = inst.depot
+    succ = [b for (i,a,b), lit in e_vars.items() if i == courier and a == dep and is_true(model.eval(lit, model_completion=True))]
+    if not succ: return []
+    route: List[int] = []
+    curr = succ[0]
+    visited = {dep, curr}
+    route.append(curr)
+    while curr != dep:
+        next_nodes = [b for (i,a,b), lit in e_vars.items() if i == courier and a == curr and is_true(model.eval(lit, model_completion=True))]
+        if not next_nodes or next_nodes[0] in visited: break
+        curr = next_nodes[0]
+        visited.add(curr)
+        if curr != dep: route.append(curr)
+    return route
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Optimisation functions
+# ────────────────────────────────────────────────────────────────────────────────
+# The all-in-one optimization function. Just give it the problem and let Z3 do its thing.
+def z3_optimise(
+    inst: Instance,
+    timeout: int = 300,
+    knn: Optional[int] = None
+) -> Tuple[int, List[List[int]], bool]:
+    """
+    Finds an optimal solution using Z3's native Optimize engine.
+    Returns: (objective, solution_tours, was_proven_optimal)
+    """
+    opt, e_vars, v_vars = build_optimizer(inst, knn)
+    opt.set("timeout", max(1, timeout * 1000))
+
+    check_result = opt.check()
+    
+    if check_result not in [sat, unknown]:
+        raise RuntimeError(f"Z3 optimisation failed with status: {check_result}")
+
+    model = opt.model()
+    final_dists = per_courier_distance(inst, model, e_vars)
+    final_obj = max(final_dists) if final_dists else 0
+    final_tours = [reconstruct_route(inst, model, e_vars, i) for i in range(inst.m)]
+    
+    # With Optimize, a 'sat' result means the solution is proven optimal.
+    # An 'unknown' result means the timeout was hit, so it's not proven optimal.
+    was_proven_optimal = (check_result == sat)
+    
+    return final_obj, final_tours, was_proven_optimal
+
+# This is our manual optimization loop. We keep asking z3 'can you do it for less?' 
+# (binary search) or 'find me any solution' and then try to beat it (linear search).
+def optimise(
+    inst: Instance,
+    timeout: int = 300,
+    strategy: str = "binary",
+    knn: Optional[int] = None
+) -> Tuple[int, List[List[int]], bool]:
+    """
+    Finds an optimal solution for the instance using iterative SAT calls.
+    Returns: (objective, solution_tours, was_proven_optimal)
+    """
+    max_d = max(max(row) for row in inst.D if row) if inst.D else 0
+    UB = sum(inst.D[inst.depot]) + sum(max_d for _ in range(inst.n))
+    t0 = perf_counter()
+    best_model: Optional[ModelRef] = None
+    best_evars: Dict[Tuple[int,int,int], Bool] = {}
+    search_completed = False
+
+    if strategy == "binary":
+        low, high = 0, UB
+        while low <= high:
+            if perf_counter() - t0 >= timeout: break
+            mid = (low + high) // 2
+            s, e_vars, v_vars = build_solver(inst, mid, knn)
+            rem_ms = max(1, int((timeout - (perf_counter() - t0)) * 1000))
+            s.set("timeout", rem_ms)
+            if s.check() == sat:
+                best_model = s.model()
+                best_evars = e_vars
+                high = mid - 1
+            else:
+                low = mid + 1
+        if perf_counter() - t0 < timeout:
+            search_completed = True
+    else: # linear search
+        s_init, e_init, _ = build_solver(inst, UB, knn)
+        rem_ms = max(1, int((timeout - (perf_counter() - t0)) * 1000))
+        if rem_ms <= 0: raise RuntimeError("Timeout before initial feasibility check.")
+        s_init.set("timeout", rem_ms)
+
+        if s_init.check() != sat:
+            raise RuntimeError("Linear search: No feasible solution found even at loose UB.")
+
+        best_model = s_init.model()
+        best_evars = e_init
+        dists_init = per_courier_distance(inst, best_model, best_evars)
+        current_B = max(dists_init)
+
+        while True:
+            if perf_counter() - t0 >= timeout:
+                search_completed = False
+                break
+
+            candidate_B = current_B - 1
+            if candidate_B < 0:
+                search_completed = True
+                break
+
+            s_iter, e_iter, _ = build_solver(inst, candidate_B, knn)
+            rem_ms = max(1, int((timeout - (perf_counter() - t0)) * 1000))
+            if rem_ms <= 0:
+                search_completed = False
+                break
+            s_iter.set("timeout", rem_ms)
+
+            if s_iter.check() == sat:
+                best_model = s_iter.model()
+                best_evars = e_iter
+                new_dists = per_courier_distance(inst, best_model, best_evars)
+                current_B = max(new_dists)
+            else:
+                # if it's UNSAT, it means the last solution we found was the best possible.
+                search_completed = True
+                break
+
+    if best_model is None: raise RuntimeError("No feasible solution found within timeout.")
+    final_dists = per_courier_distance(inst, best_model, best_evars)
+    final_obj = max(final_dists) if final_dists else 0
+    final_tours = [reconstruct_route(inst, best_model, best_evars, i) for i in range(inst.m)]
+    return final_obj, final_tours, search_completed
+
+# Large Neighborhood Search. A fancy way to try and improve a good solution. 
+# we break a little part of it and ask z3 to fix it, hoping it finds a better way.
+def lns_optimise(
+    inst: Instance,
+    timeout: int = 300,
+    strategy: str = "binary",
+    lns_iters: int = 20,
+    destroy_fraction: float = 0.3,
+    knn: Optional[int] = None
+) -> Tuple[int, List[List[int]], bool]:
+    t0 = perf_counter()
+    best_obj, best_tours, optimal_search = optimise(inst, timeout, strategy, knn)
+    if not optimal_search:
+        # if the first search didnt find the optimal, we cant promise LNS will either
+        return best_obj, best_tours, False
+
+    for _ in range(lns_iters):
+        if perf_counter() - t0 >= timeout:
+            optimal_search = False
+            break
+        all_assigned_items = [item for tour in best_tours for item in tour]
+        if not all_assigned_items: break
+        # 'destroy' a random chunk of the solution
+        k = max(1, int(len(all_assigned_items) * destroy_fraction))
+        to_unassign = set(random.sample(all_assigned_items, k))
+        # and then try to find a better way to do it
+        s, e_vars, v_vars = build_solver(inst, best_obj - 1, knn)
+        # lock in the part of the solution we're keeping
+        for i, route in enumerate(best_tours):
+            for item_j in route:
+                if item_j not in to_unassign: s.add(v_vars[(i, item_j)])
         
-        depot_idx_0based = n
-        if reverse_map is None:
-            reverse_map = {i: i + 1 for i in range(n)} # Default map if no sorting
-            
-        all_routes = []
-        for k in range(m):
-            arcs = []
-            for i in range(n + 1):
-                for j in range(n + 1):
-                    if is_true(model.eval(y_vars[k][i][j], model_completion=True)):
-                        arcs.append((i, j))
-            
-            if not arcs:
-                all_routes.append([]); continue
+        rem_ms = max(1, int((timeout - (perf_counter() - t0)) * 1000))
+        s.set("timeout", rem_ms)
+        if s.check() == sat:
+            # cool, we found a better way!
+            m = s.model()
+            new_dists = per_courier_distance(inst, m, e_vars)
+            new_obj = max(new_dists) if new_dists else 0
+            if new_obj < best_obj:
+                best_obj = new_obj
+                best_tours = [reconstruct_route(inst, m, e_vars, i) for i in range(inst.m)]
+    return best_obj, best_tours, optimal_search
 
-            tour_map = {i: j for i, j in arcs}
-            if depot_idx_0based not in tour_map:
-                all_routes.append([]); continue # Empty route
+# this is the main entry point that runs when you call the script from the command line
+def main() -> None:
+    # just setting up the command line arguments so you can run the script with different options
+    parser = argparse.ArgumentParser(
+        description="Loop over .dat instances and solve via SMT with binary/linear, LNS and kNN"
+    )
+    parser.add_argument(
+        "instances", nargs="*", help=".dat files or glob patterns (e.g. inst*.dat)"
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=300,
+        help="per-instance time limit in seconds (default: 300)"
+    )
+    parser.add_argument(
+        "--search", choices=["binary", "linear", "z3"], default="binary",
+        help="search strategy: binary, linear, or z3 (native optimization)"
+    )
+    parser.add_argument(
+        "--lns", action="store_true",
+        help="apply Large Neighborhood Search refinement (not compatible with --search z3)"
+    )
+    parser.add_argument(
+        "--lns-iters", type=int, default=20,
+        help="LNS iterations (default: 20)"
+    )
+    parser.add_argument(
+        "--destroy-frac", type=float, default=0.3,
+        help="fraction of assignments to destroy in LNS (default: 0.3)"
+    )
+    parser.add_argument(
+        "--knn", type=int,
+        help="number of nearest neighbors for pruning edges (kNN)"
+    )
 
-            current_node = tour_map[depot_idx_0based]
-            route = []
-            visited_count = 0
-            while current_node != depot_idx_0based and visited_count < n:
-                route.append(reverse_map[current_node])
-                current_node = tour_map.get(current_node, depot_idx_0based)
-                visited_count += 1
-            all_routes.append(route)
-            
-        return all_routes
+    args = parser.parse_args()
 
-    def _recalculate_objective(self, m: int, n: int, D: list, solution_paths: list) -> int:
-        """
-        Recalculates the objective value from a given solution path using pure integer arithmetic
-        to ensure consistency with the external checker.
-        """
-        if not solution_paths:
-            return -1
+    # you can't use LNS with the 'z3' optimizer, doesnt make sense
+    if args.lns and args.search == 'z3':
+        print("[ERROR] LNS is not compatible with the 'z3' search strategy.", file=sys.stderr)
+        sys.exit(1)
 
-        max_dist = 0
-        depot_idx = n  # 0-based index for distance matrix
+    # find all the instance files to run
+    patterns = args.instances if args.instances else ["inst*.dat"]
+    files: List[Path] = []
+    for pat in patterns:
+        p = Path(pat)
+        if p.is_dir():
+            files.extend(sorted(p.glob("*.dat")))
+        else:
+            files.extend(sorted(Path(".").glob(pat)))
+    files = sorted(set(files))
 
-        for k in range(m):
-            route = solution_paths[k]
-            if not route:
-                continue
+    if not files:
+        print("No instance files found.", file=sys.stderr)
+        sys.exit(1)
 
-            dist = 0
-            last_node_idx = depot_idx
-            # Item IDs in the solution are 1-based
-            for item_id in route:
-                item_idx = item_id - 1  # Convert to 0-based for matrix access
-                dist += D[last_node_idx][item_idx]
-                last_node_idx = item_idx
-            
-            # Add distance from last item back to depot
-            dist += D[last_node_idx][depot_idx]
+    # where to save the results
+    smt_res_dir = Path("res") / "SMT"
+    smt_res_dir.mkdir(parents=True, exist_ok=True)
 
-            if dist > max_dist:
-                max_dist = dist
-                
-        return max_dist
+    # The main loop, go through each file and solve it
+    for f in files:
+        header = f"=== Solving {f.name}"
+        if args.lns: header += " + LNS"
+        if args.knn is not None: header += f" (kNN={args.knn})"
+        print(header)
 
-    def solve(self, instance_file: str, output_dir: str):
-        os.makedirs(output_dir, exist_ok=True)
-        base_name = os.path.splitext(os.path.basename(instance_file))[0]
-        inst_id = re.search(r'\d+', base_name).group(0)
-        results = {}
+        start = perf_counter()
+        inst = load_instance(f)
+        opt_val, tours, optimal = -1, [[] for _ in range(inst.m)], False
 
-        for name, config in self.configs:
-            print(f"----- [SMT Solver Enhanced] -----")
-            print(f"Running approach: {name} for instance: {inst_id}")
-            
-            total_start_time = time.time()
-            m, n, caps, original_sizes, original_D = self._parse_instance(instance_file)
-            
-            use_greedy = config.get("use_greedy", False)
-            use_sorting = config.get("use_sorting", False)
-            timeout_ms = self.timeout * 1000
-            
-            sizes_to_solve, D_to_solve = original_sizes, original_D
-            reverse_item_map = {i: i + 1 for i in range(n)}
+        try:
+            if args.lns:
+                opt_val, tours, optimal = lns_optimise(
+                    inst, timeout=args.timeout, strategy=args.search,
+                    lns_iters=args.lns_iters, destroy_fraction=args.destroy_frac, knn=args.knn
+                )
+            elif args.search == 'z3':
+                opt_val, tours, optimal = z3_optimise(
+                    inst, timeout=args.timeout, knn=args.knn
+                )
+            else:
+                opt_val, tours, optimal = optimise(
+                    inst, timeout=args.timeout, strategy=args.search, knn=args.knn
+                )
+        except RuntimeError as e:
+            print(f"[ERROR] {f.name}: {e}", file=sys.stderr)
 
-            if use_sorting and n > 0:
-                print("Applying item pre-sorting by remoteness...")
-                # Sort items by distance from depot (remotest first)
-                original_indices_0based = sorted(range(n), key=lambda j: original_D[j][n] + original_D[n][j], reverse=True)
-                sorted_to_original_map = {new_idx: orig_idx for new_idx, orig_idx in enumerate(original_indices_0based)}
-                reverse_item_map = {new_idx: sorted_to_original_map[new_idx] + 1 for new_idx in range(n)}
-                
-                # Remap sizes and distance matrix for the solver
-                sizes_to_solve = [0] + [original_sizes[sorted_to_original_map[i] + 1] for i in range(n)]
-                new_D = [[0] * (n + 1) for _ in range(n + 1)]
-                for i in range(n):
-                    for j in range(n):
-                        orig_i, orig_j = sorted_to_original_map[i], sorted_to_original_map[j]
-                        new_D[i][j] = original_D[orig_i][orig_j]
-                for i in range(n):
-                    orig_i = sorted_to_original_map[i]
-                    new_D[i][n], new_D[n][i] = original_D[orig_i][n], original_D[n][orig_i]
-                new_D[n][n] = original_D[n][n]
-                D_to_solve = new_D
+        elapsed = perf_counter() - start
+        
+        t_int = math.floor(elapsed)
+        if t_int >= args.timeout and not optimal:
+            t_int = args.timeout
+            optimal = False
 
-            model, is_optimal = None, False
-            
-            try:
-                presolve_start_time = time.time()
-                
-                optimizer, rho, x, y = self._build_model(m, n, caps, sizes_to_solve, D_to_solve)
-                
-                greedy_ub = None
-                if use_greedy:
-                    _, greedy_ub = self._local_search_heuristic(m, n, caps, sizes_to_solve, D_to_solve)
-                
-                presolve_time_ms = (time.time() - presolve_start_time) * 1000
-                remaining_timeout_ms = timeout_ms - int(presolve_time_ms)
-                
-                if remaining_timeout_ms > 0:
-                    model, is_optimal = self._solve_with_optimizer(optimizer, rho, remaining_timeout_ms, initial_upper_bound=greedy_ub)
+        # the model uses 0-indexed items, but the problem wants 1-indexed, so fix that
+        sol = [[item_idx + 1 for item_idx in route] for route in tours]
 
-            except Exception as e:
-                print(f"[SMT Solver] ERROR on instance {base_name} with {name}: {e}")
-                traceback.print_exc()
+        # figure out what to call this run in the output file
+        approach = args.search
+        if args.lns: approach = "lns"
+        if args.knn is not None: approach += f"_knn{args.knn}"
 
-            solve_time_sec = time.time() - total_start_time
-            final_obj, final_sol = -1, [[] for _ in range(m)]
+        record = {
+            "time":    t_int,
+            "optimal": optimal,
+            "obj":     opt_val,
+            "sol":     sol
+        }
 
-            if model:
-                # First, extract the paths from the model.
-                final_sol = self._extract_paths(model, y, m, n, reverse_map=reverse_item_map)
-                
-                # *** FIX: Recalculate the objective from the extracted paths and ORIGINAL distance matrix. ***
-                # This avoids any solver precision/rounding issues and guarantees consistency.
-                final_obj = self._recalculate_objective(m, n, original_D, final_sol)
-            
-            if solve_time_sec >= self.timeout:
-                is_optimal = False
+        print(f"=== {f.name} result ===")
+        print(json.dumps({approach: record}, indent=2))
+        print(f"(solved in {t_int}s, optimal={optimal}, obj={opt_val})\n")
 
-            results[name] = {
-                "time": min(self.timeout, round(solve_time_sec, 2)),
-                "optimal": is_optimal,
-                "obj": int(final_obj),
-                "sol": final_sol
-            }
+        # save everything to a json file
+        digits = "".join(filter(str.isdigit, f.stem))
+        idx = int(digits) if digits else f.stem
+        out_file = smt_res_dir / f"{idx}.json"
 
-        out_path = os.path.join(output_dir, f"{inst_id}.json")
-        with open(out_path, "w") as jf:
-            json.dump(results, jf, indent=4)
-        print(f"Enhanced SMT results for instance {inst_id} written to {out_path}\n")
+        if out_file.exists():
+            with open(out_file, 'r') as jf:
+                try:
+                    full = json.load(jf)
+                except json.JSONDecodeError:
+                    full = {}
+        else:
+            full = {}
 
+        full[approach] = record
+        out_file.write_text(json.dumps(full, indent=2))
+        print(f"→ Updated {out_file}\n")
+
+
+if __name__ == "__main__":
+    main()

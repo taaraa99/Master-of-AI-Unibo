@@ -1,17 +1,17 @@
 {
-    "smt_auto": {
-        "time": 0.18,
+    "smt_binary": {
+        "time": 0,
         "optimal": true,
         "obj": 12,
         "sol": [
             [
-                3,
+                5,
                 6,
-                5
+                3
             ],
             [
-                4,
-                2
+                2,
+                4
             ],
             [
                 1,
@@ -19,8 +19,8 @@
             ]
         ]
     },
-    "smt_base": {
-        "time": 0.21,
+    "smt_linear": {
+        "time": 0,
         "optimal": true,
         "obj": 12,
         "sol": [
@@ -39,9 +39,69 @@
             ]
         ]
     },
-    "smt_greedy": {
-        "time": 0.21,
+    "smt_z3": {
+        "time": 0,
         "optimal": true,
+        "obj": 12,
+        "sol": [
+            [
+                5,
+                6,
+                3
+            ],
+            [
+                2,
+                4
+            ],
+            [
+                7,
+                1
+            ]
+        ]
+    },
+    "smt_binary_knn6": {
+        "time": 0,
+        "optimal": false,
+        "obj": 12,
+        "sol": [
+            [
+                5,
+                4,
+                2
+            ],
+            [
+                3,
+                7
+            ],
+            [
+                1,
+                6
+            ]
+        ]
+    },
+    "smt_z3_knn6": {
+        "time": 0,
+        "optimal": false,
+        "obj": 12,
+        "sol": [
+            [
+                5,
+                4,
+                2
+            ],
+            [
+                7,
+                3
+            ],
+            [
+                6,
+                1
+            ]
+        ]
+    },
+    "smt_lns": {
+        "time": 1,
+        "optimal": false,
         "obj": 12,
         "sol": [
             [
@@ -59,43 +119,23 @@
             ]
         ]
     },
-    "smt_sorted": {
-        "time": 0.21,
-        "optimal": true,
+    "smt_lns_knn6": {
+        "time": 1,
+        "optimal": false,
         "obj": 12,
         "sol": [
             [
-                3,
-                6,
-                5
-            ],
-            [
+                5,
                 4,
                 2
             ],
             [
-                7,
-                1
-            ]
-        ]
-    },
-    "smt_greedy_sorted": {
-        "time": 0.21,
-        "optimal": true,
-        "obj": 12,
-        "sol": [
-            [
                 3,
-                6,
-                5
-            ],
-            [
-                4,
-                2
+                7
             ],
             [
                 1,
-                7
+                6
             ]
         ]
     }

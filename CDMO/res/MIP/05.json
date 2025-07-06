@@ -1,8 +1,8 @@
 {
     "HIGHS": {
-        "time": 0,
+        "time": 0.01,
         "optimal": true,
-        "obj": 206.0,
+        "obj": 206,
         "sol": [
             [
                 2
@@ -14,9 +14,9 @@
         ]
     },
     "HIGHS+SB": {
-        "time": 0,
+        "time": 0.01,
         "optimal": true,
-        "obj": 206.0,
+        "obj": 206,
         "sol": [
             [
                 2
@@ -28,9 +28,9 @@
         ]
     },
     "HIGHS+SB+IMPLIED": {
-        "time": 0,
+        "time": 0.01,
         "optimal": true,
-        "obj": 206.0,
+        "obj": 206,
         "sol": [
             [
                 2
@@ -42,13 +42,13 @@
         ]
     },
     "HIGHS+SB+IMPLIED+WM": {
-        "time": 0,
+        "time": 0.01,
         "optimal": false,
         "obj": -1.0,
         "sol": []
     },
     "HIGHS+SB+IMPLIED+WM+CUT": {
-        "time": 0,
+        "time": 0.01,
         "optimal": false,
         "obj": -1.0,
         "sol": []

@@ -2,14 +2,16 @@ import math
 import sys
 import os
 import json
-from datetime import datetime
-from ortools.linear_solver import pywraplp
+import time
 import multiprocessing
 import queue
+from datetime import datetime
+from ortools.linear_solver import pywraplp
 
 def log(message):
-    """Helper function to print messages with a timestamp."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
+    """Helper function to print messages with a timestamp and process ID."""
+    pid_str = f"Process {os.getpid()}"
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{pid_str}] {message}", flush=True)
 
 def read_instance(file_path):
     """
@@ -85,7 +87,10 @@ def compute_greedy_solution(m, n, capacities, item_sizes, dist):
 def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, approach="HiGHS"):
     """
     This function builds and solves the MCP using the MTZ formulation.
+    The total time taken for this function is measured.
     """
+    start_time = time.time()
+    
     log("Creating HiGHS solver.")
     solver = pywraplp.Solver.CreateSolver("highs")
     if not solver:
@@ -102,7 +107,6 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
     used = [solver.BoolVar(f"used_{i}") for i in range(m)]
     y = [solver.NumVar(0, solver.infinity(), f"y_{i}") for i in range(m)]
     z = solver.NumVar(0, solver.infinity(), "z")
-    # MTZ variables for subtour elimination
     u = {(i, j): solver.NumVar(0, n, f"u_{i}_{j}") for i in range(m) for j in range(1, n + 1)}
     log("Finished defining variables.")
 
@@ -120,17 +124,17 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
     for i in range(m): solver.Add(y[i] == solver.Sum(dist[j][k] * x[i, j, k] for j in range(n + 1) for k in range(n + 1) if j != k))
     for i in range(m): solver.Add(z >= y[i])
     
-    # Add MTZ subtour elimination constraints
+    # MTZ (Miller-Tucker-Zemlin) subtour elimination constraints.
     for i in range(m):
         for j in range(1, n + 1):
             solver.Add(u[i, j] >= a[i, j])
             solver.Add(u[i, j] <= n * a[i, j])
+        for j in range(1, n + 1):
             for k in range(1, n + 1):
                 if j != k:
-                    solver.Add(u[i, j] - u[i, k] + n * x[i, j, k] <= n - 1)
+                    solver.Add(u[(i, j)] - u[(i, k)] + n * x[(i, j, k)] <= n - 1)
     log("Finished adding core constraints.")
 
-    # --- Optional Enhancements ---
     if "WM" in approach:
         log("Computing greedy solution for warm start...")
         _, ub = compute_greedy_solution(m, n, capacities, item_sizes, dist)
@@ -143,9 +147,16 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
     status = solver.Solve()
     log("--- Solver finished ---")
 
-    solution = {"time": int(solver.WallTime() / 1000.0), "optimal": (status == pywraplp.Solver.OPTIMAL), "obj": -1.0, "sol": []}
+    total_time_seconds = time.time() - start_time
+
+    solution = {
+        "time": round(total_time_seconds, 2),
+        "optimal": (status == pywraplp.Solver.OPTIMAL),
+        "obj": -1.0,
+        "sol": []
+    }
+
     if status in [pywraplp.Solver.OPTIMAL, pywraplp.Solver.FEASIBLE]:
-        solution["obj"] = round(solver.Objective().Value(), 5)
         final_routes = []
         for i in range(m):
             if used[i].solution_value() > 0.5:
@@ -163,19 +174,30 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
             else:
                 final_routes.append([])
         solution["sol"] = final_routes
+        
+        # Recalculate objective from the actual solution routes to ensure consistency
+        if any(final_routes):
+            route_distances = [calculate_route_dist(r, dist) for r in final_routes]
+            max_distance = max(route_distances)
+            solution["obj"] = round(max_distance, 5)
+        else:
+            solution["obj"] = 0.0
     
     return {approach.upper(): solution}
 
-def solve_process_wrapper(result_queue, m, n, capacities, item_sizes, dist, time_limit, approach):
+def solve_process_wrapper(result_queue, *args):
+    """A wrapper to run the solver in a separate process and handle exceptions."""
     try:
-        solution = build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit, approach)
+        solution = build_and_solve_mcp(*args)
         result_queue.put(solution)
     except Exception as e:
+        log(f"Encountered an exception: {e}")
+        # Pass the exception back to the main process
         result_queue.put(e)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python mcp_ortools_model.py <instance.dat>")
+        print("Usage: python mcp_solver.py <instance.dat>")
         sys.exit(1)
         
     instance_file = sys.argv[1]
@@ -183,7 +205,7 @@ if __name__ == "__main__":
         print(f"Error: Instance file not found at '{instance_file}'")
         sys.exit(1)
 
-    TOTAL_TIMEOUT = 300
+    TOTAL_TIMEOUT = 300  # 5 minutes
 
     try:
         log(f"Reading instance file: {instance_file}")
@@ -192,35 +214,42 @@ if __name__ == "__main__":
         
         approach_str = "HiGHS+WM"
         
+        # Prepare for multiprocessing
         result_queue = multiprocessing.Queue()
+        solver_args = (m, n, capacities, item_sizes, dist, TOTAL_TIMEOUT, approach_str)
         
-        p = multiprocessing.Process(target=solve_process_wrapper, args=(result_queue, m, n, capacities, item_sizes, dist, TOTAL_TIMEOUT, approach_str))
+        p = multiprocessing.Process(target=solve_process_wrapper, args=(result_queue,) + solver_args)
         
         log(f"Starting solver process with a total timeout of {TOTAL_TIMEOUT} seconds...")
         p.start()
+        
+        # Wait for the process to finish or timeout
         p.join(TOTAL_TIMEOUT)
         
+        result = None
         if p.is_alive():
             log(f"Total time limit of {TOTAL_TIMEOUT} seconds exceeded. Terminating process.")
             p.terminate()
             p.join()
             
-            timeout_solution = {
+            # Create a timeout result
+            result = {
                 approach_str.upper(): {
                     "time": TOTAL_TIMEOUT, "optimal": False, "obj": -1.0, 
                     "sol": [], "status": "Total timeout exceeded"
                 }
             }
-            print("\n--- Solution ---")
-            print(json.dumps(timeout_solution, indent=4))
         else:
             log("Process finished within the time limit.")
-            result = result_queue.get()
-            if isinstance(result, Exception):
-                raise result
-            
-            print("\n--- Solution ---")
-            print(json.dumps(result, indent=4))
+            # Get the result from the queue
+            output = result_queue.get()
+            if isinstance(output, Exception):
+                # Re-raise the exception caught in the child process
+                raise output
+            result = output
+
+        print("\n--- Solution ---")
+        print(json.dumps(result, indent=4))
 
     except (ValueError, RuntimeError, queue.Empty) as e:
         print(f"\nAn error occurred: {e}")

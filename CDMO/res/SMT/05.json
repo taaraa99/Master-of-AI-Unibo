@@ -1,6 +1,6 @@
 {
-    "smt_auto": {
-        "time": 0.02,
+    "smt_binary": {
+        "time": 0,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -13,8 +13,8 @@
             ]
         ]
     },
-    "smt_base": {
-        "time": 0.02,
+    "smt_linear": {
+        "time": 0,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -27,8 +27,8 @@
             ]
         ]
     },
-    "smt_greedy": {
-        "time": 0.03,
+    "smt_z3": {
+        "time": 0,
         "optimal": true,
         "obj": 206,
         "sol": [
@@ -41,9 +41,9 @@
             ]
         ]
     },
-    "smt_sorted": {
-        "time": 0.03,
-        "optimal": true,
+    "smt_binary_knn6": {
+        "time": 0,
+        "optimal": false,
         "obj": 206,
         "sol": [
             [
@@ -55,9 +55,37 @@
             ]
         ]
     },
-    "smt_greedy_sorted": {
-        "time": 0.03,
-        "optimal": true,
+    "smt_z3_knn6": {
+        "time": 0,
+        "optimal": false,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "smt_lns": {
+        "time": 0,
+        "optimal": false,
+        "obj": 206,
+        "sol": [
+            [
+                2
+            ],
+            [
+                1,
+                3
+            ]
+        ]
+    },
+    "smt_lns_knn6": {
+        "time": 0,
+        "optimal": false,
         "obj": 206,
         "sol": [
             [

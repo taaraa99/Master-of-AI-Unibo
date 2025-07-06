@@ -1,8 +1,8 @@
 {
     "HIGHS": {
-        "time": 0,
+        "time": 0.31,
         "optimal": true,
-        "obj": 12.0,
+        "obj": 12,
         "sol": [
             [
                 5,
@@ -10,19 +10,19 @@
                 2
             ],
             [
-                6,
+                7,
                 3
             ],
             [
-                7,
+                6,
                 1
             ]
         ]
     },
     "HIGHS+SB": {
-        "time": 0,
+        "time": 0.32,
         "optimal": true,
-        "obj": 12.0,
+        "obj": 12,
         "sol": [
             [
                 5,
@@ -30,19 +30,19 @@
                 2
             ],
             [
-                6,
+                7,
                 3
             ],
             [
-                7,
+                6,
                 1
             ]
         ]
     },
     "HIGHS+SB+IMPLIED": {
-        "time": 0,
+        "time": 0.32,
         "optimal": true,
-        "obj": 12.0,
+        "obj": 12,
         "sol": [
             [
                 5,
@@ -50,19 +50,19 @@
                 2
             ],
             [
-                6,
+                7,
                 3
             ],
             [
-                7,
+                6,
                 1
             ]
         ]
     },
     "HIGHS+SB+IMPLIED+WM": {
-        "time": 0,
+        "time": 0.13,
         "optimal": true,
-        "obj": 12.0,
+        "obj": 12,
         "sol": [
             [
                 5,
@@ -74,15 +74,15 @@
                 3
             ],
             [
-                7,
-                1
+                1,
+                7
             ]
         ]
     },
     "HIGHS+SB+IMPLIED+WM+CUT": {
-        "time": 0,
+        "time": 0.15,
         "optimal": true,
-        "obj": 12.0,
+        "obj": 12,
         "sol": [
             [
                 5,
@@ -94,21 +94,49 @@
                 3
             ],
             [
-                7,
-                1
+                1,
+                7
             ]
         ]
     },
     "CBC": {
         "time": 0,
-        "optimal": false,
-        "obj": -1.0,
-        "sol": []
+        "optimal": true,
+        "obj": 12.0,
+        "sol": [
+            [
+                3,
+                6,
+                5
+            ],
+            [
+                4,
+                2
+            ],
+            [
+                1,
+                7
+            ]
+        ]
     },
     "SCIP": {
         "time": 0,
-        "optimal": false,
-        "obj": -1.0,
-        "sol": []
+        "optimal": true,
+        "obj": 12.0,
+        "sol": [
+            [
+                3,
+                6,
+                5
+            ],
+            [
+                2,
+                4
+            ],
+            [
+                7,
+                1
+            ]
+        ]
     }
 }

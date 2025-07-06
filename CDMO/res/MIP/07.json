@@ -20,12 +20,41 @@
         "sol": [],
         "status": "Total timeout exceeded"
     },
-    "HIGHS_SB_IMPLIED_WM": {
-        "time": 300,
-        "optimal": false,
-        "obj": -1.0,
-        "sol": [],
-        "status": "Total timeout exceeded"
+    "HIGHS+SB+IMPLIED+WM": {
+        "time": 149.82,
+        "optimal": true,
+        "obj": 167,
+        "sol": [
+            [
+                4
+            ],
+            [
+                12,
+                11,
+                1,
+                8,
+                17,
+                16,
+                6,
+                15
+            ],
+            [
+                5
+            ],
+            [
+                10,
+                3,
+                7
+            ],
+            [
+                9,
+                14,
+                13
+            ],
+            [
+                2
+            ]
+        ]
     },
     "HIGHS_SB_IMPLIED_WM_CUT": {
         "time": 300,

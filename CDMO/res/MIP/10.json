@@ -42,10 +42,42 @@
         "status": "Total timeout exceeded"
     },
     "SCIP": {
-        "time": 300,
-        "optimal": false,
-        "obj": -1.0,
-        "sol": [],
-        "status": "Total timeout exceeded"
+        "time": 221,
+        "optimal": true,
+        "obj": 244.0,
+        "sol": [
+            [
+                5
+            ],
+            [
+                11,
+                4
+            ],
+            [
+                13
+            ],
+            [
+                1
+            ],
+            [
+                7
+            ],
+            [
+                2,
+                6,
+                9
+            ],
+            [],
+            [
+                8,
+                10
+            ],
+            [
+                3
+            ],
+            [
+                12
+            ]
+        ]
     }
 }
