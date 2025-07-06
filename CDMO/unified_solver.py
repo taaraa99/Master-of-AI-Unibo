@@ -14,7 +14,9 @@ import queue
 # We import our OR-Tools model functions
 from models.mip.MIP_HiGHS import read_instance as read_instance1, build_and_solve_mcp as build_and_solve_mcp1
 from models.mip.MIP_CBC_SCIP import read_instance as read_instance2, build_and_solve_mcp as build_and_solve_mcp2
-from models.sat.sat import Instance, load_instance, optimise, lns_optimise
+# from models.sat.sat import Instance, load_instance, optimise, lns_optimise
+from models.sat.sat import load_instance as load_instance_sat, optimise, lns_optimise
+
 from models.smt.SMT_Solver import SMT_Solver
 import minizinc
 
@@ -110,7 +112,7 @@ class MIPSolver:
                 all_results.update(sol)
 
         # --- CBC/SCIP Approaches ---
-        mip2_approaches = ["CBC", "SCIP", "CBC+SB", "SCIP+SB"]
+        mip2_approaches = ["CBC", "SCIP"]
         for approach in mip2_approaches:
             log(f"[MIPSolver] Preparing approach: {approach} for instance: {base_name}")
 
@@ -144,55 +146,117 @@ class SAT_Solver:
             ("lns",           dict(strategy="binary", knn=None, lns=True)),
             ("lns_knn6",      dict(strategy="binary", knn=6,    lns=True)),
         ]
-
-    def solve(self, instance_file: str, output_dir: str):
+    def solve(self, instance_file: str, output_dir: str, time_limit: int = 300):
         os.makedirs(output_dir, exist_ok=True)
-        inst = load_instance(Path(instance_file))
+        inst = load_instance_sat(Path(instance_file))
         results = {}
+
         for name, cfg in self.configs:
-            print(f"[SAT_Solver] Running approach: {name} for instance: {os.path.basename(instance_file)}")
-            t0 = time.time()
-            # Default values in case of timeout or error
+            log(f"[SAT_Solver] Running approach: {name} for instance: {os.path.basename(instance_file)}")
+            t0 = time.perf_counter()
+            
             final_obj, final_tours, is_optimal = -1, [[] for _ in range(inst.m)], False
+            
             try:
-                # *** FIX: Capture the new 'is_optimal' boolean returned by the functions ***
                 if cfg["lns"]:
                     final_obj, final_tours, is_optimal = lns_optimise(
-                        inst, timeout=self.timeout, strategy=cfg["strategy"],
+                        inst, timeout=time_limit, strategy=cfg["strategy"],
                         knn=cfg["knn"], lns_iters=self.lns_iters, destroy_fraction=self.destroy_frac
                     )
                 else:
                     final_obj, final_tours, is_optimal = optimise(
-                        inst, timeout=self.timeout, strategy=cfg["strategy"], knn=cfg["knn"]
+                        inst, timeout=time_limit, strategy=cfg["strategy"], knn=cfg["knn"]
                     )
             except RuntimeError as e:
-                print(f"  [Warning] No solution found for {name}: {e}")
+                log(f"  [Warning] No solution found for {name}: {e}")
             
-            elapsed = time.time() - t0
+            elapsed = time.perf_counter() - t0
             time_reported = math.floor(elapsed)
             
-            # The optimality flag is now correct, but if we timed out, force it to false
-            if time_reported >= self.timeout:
-                time_reported = self.timeout
+            if time_reported >= time_limit:
+                time_reported = time_limit
                 is_optimal = False
+            
+            # Heuristics like LNS and kNN are not guaranteed to be optimal
             if "lns" in name or "knn" in name:
                 is_optimal = False
 
+            # The routes from the SAT model are 0-indexed, convert to 1-indexed for output
             solution_1_based = [[item_idx + 1 for item_idx in route] for route in final_tours]
-            results[name] = {"time": time_reported, "optimal": is_optimal, "obj": final_obj, "sol": solution_1_based}
+            results[name] = {
+                "time": time_reported, 
+                "optimal": is_optimal, 
+                "obj": final_obj, 
+                "sol": solution_1_based
+            }
 
         base = os.path.splitext(os.path.basename(instance_file))[0]
         inst_id = re.search(r"\d+", base).group(0)
         out_path = os.path.join(output_dir, f"{inst_id}.json")
+        
+        # Merge with existing results if the JSON file already exists
         if os.path.exists(out_path):
             with open(out_path, "r") as jf:
-                try: existing_results = json.load(jf)
-                except json.JSONDecodeError: existing_results = {}
+                try:
+                    existing_results = json.load(jf)
+                except json.JSONDecodeError:
+                    existing_results = {}
             existing_results.update(results)
             results = existing_results
+            
         with open(out_path, "w") as jf:
             json.dump(results, jf, indent=4)
-        print(f"All SAT approaches for instance {inst_id} written to {out_path}")
+        log(f"All SAT approaches for instance {inst_id} written to {out_path}")
+
+
+    # def solve(self, instance_file: str, output_dir: str, time_limit: int = 300):
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     inst = load_instance(Path(instance_file))
+    #     results = {}
+    #     for name, cfg in self.configs:
+    #         print(f"[SAT_Solver] Running approach: {name} for instance: {os.path.basename(instance_file)}")
+    #         t0 = time.time()
+    #         # Default values in case of timeout or error
+    #         final_obj, final_tours, is_optimal = -1, [[] for _ in range(inst.m)], False
+    #         try:
+    #             # *** FIX: Capture the new 'is_optimal' boolean returned by the functions ***
+    #             if cfg["lns"]:
+    #                 final_obj, final_tours, is_optimal = lns_optimise(
+    #                     inst, timeout=self.timeout, strategy=cfg["strategy"],
+    #                     knn=cfg["knn"], lns_iters=self.lns_iters, destroy_fraction=self.destroy_frac
+    #                 )
+    #             else:
+    #                 final_obj, final_tours, is_optimal = optimise(
+    #                     inst, timeout=self.timeout, strategy=cfg["strategy"], knn=cfg["knn"]
+    #                 )
+    #         except RuntimeError as e:
+    #             print(f"  [Warning] No solution found for {name}: {e}")
+            
+    #         elapsed = time.time() - t0
+    #         time_reported = math.floor(elapsed)
+            
+    #         # The optimality flag is now correct, but if we timed out, force it to false
+    #         if time_reported >= self.timeout:
+    #             time_reported = self.timeout
+    #             is_optimal = False
+    #         if "lns" in name or "knn" in name:
+    #             is_optimal = False
+
+    #         solution_1_based = [[item_idx + 1 for item_idx in route] for route in final_tours]
+    #         results[name] = {"time": time_reported, "optimal": is_optimal, "obj": final_obj, "sol": solution_1_based}
+
+    #     base = os.path.splitext(os.path.basename(instance_file))[0]
+    #     inst_id = re.search(r"\d+", base).group(0)
+    #     out_path = os.path.join(output_dir, f"{inst_id}.json")
+    #     if os.path.exists(out_path):
+    #         with open(out_path, "r") as jf:
+    #             try: existing_results = json.load(jf)
+    #             except json.JSONDecodeError: existing_results = {}
+    #         existing_results.update(results)
+    #         results = existing_results
+    #     with open(out_path, "w") as jf:
+    #         json.dump(results, jf, indent=4)
+    #     print(f"All SAT approaches for instance {inst_id} written to {out_path}")
 
 class UnifiedSolver:
     def __init__(self, solver_type, base_dir=".", output_dir="res"):

@@ -9,12 +9,11 @@ import queue
 
 def log(message):
     """Helper function to print messages with a timestamp."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
 def read_instance(file_path):
     """
     Loads an MCP instance from a .dat file.
-    Node 0 is the origin, nodes 1 through n are items.
     """
     with open(file_path, "r") as f:
         lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
@@ -42,38 +41,48 @@ def read_instance(file_path):
             dist[i][j] = 0 if i == j else raw[i-1][j-1]
     return m, n, capacities, item_sizes, dist
 
+def calculate_route_dist(route, dist):
+    """Calculates the total distance of a single route."""
+    if not route:
+        return 0
+    total_dist = dist[0][route[0]]
+    for i in range(len(route) - 1):
+        total_dist += dist[route[i]][route[i+1]]
+    total_dist += dist[route[-1]][0]
+    return total_dist
+
 def compute_greedy_solution(m, n, capacities, item_sizes, dist):
     """
-    Implements a nearest-neighbor heuristic to generate an upper bound.
+    An improved greedy insertion heuristic to find a good initial solution for the warm start.
     """
-    assigned = [False] * (n+1)
     routes = [[] for _ in range(m)]
-    route_dists = [0.0] * m
-    rem_caps = capacities[:]
-    for i in range(m):
-        current = 0
-        while True:
-            best_item, best_dist = None, float('inf')
-            for j in range(1, n+1):
-                if (not assigned[j]) and (item_sizes[j-1] <= rem_caps[i]):
-                    d = dist[current][j]
-                    if d < best_dist:
-                        best_dist, best_item = d, j
-            if best_item is None:
-                route_dists[i] += dist[current][0]
-                break
-            routes[i].append(best_item)
-            assigned[best_item] = True
-            route_dists[i] += dist[current][best_item]
-            rem_caps[i] -= item_sizes[best_item-1]
-            current = best_item
-    for j in range(1, n+1):
-        if not assigned[j]:
-            idx = max(range(m), key=lambda i: rem_caps[i])
-            routes[idx].append(j)
-            route_dists[idx] += dist[0][j] + dist[j][0]
-            assigned[j] = True
-    return routes, max(route_dists) if any(route_dists) else 0
+    remaining_caps = list(capacities)
+    unassigned_items = list(range(1, n + 1))
+
+    while unassigned_items:
+        best_insertion, min_cost_increase = None, float('inf')
+        for item_idx, item in enumerate(unassigned_items):
+            item_size = item_sizes[item - 1]
+            for i in range(m):
+                if remaining_caps[i] >= item_size:
+                    for pos in range(len(routes[i]) + 1):
+                        original_dist = calculate_route_dist(routes[i], dist)
+                        new_route = routes[i][:pos] + [item] + routes[i][pos:]
+                        new_dist = calculate_route_dist(new_route, dist)
+                        cost_increase = new_dist - original_dist
+                        if cost_increase < min_cost_increase:
+                            min_cost_increase = cost_increase
+                            best_insertion = (item, item_idx, i, pos)
+        if best_insertion is None:
+            log("Warning: Could not assign all items in greedy heuristic.")
+            break
+        item_to_insert, item_list_idx, route_idx, pos_idx = best_insertion
+        routes[route_idx].insert(pos_idx, item_to_insert)
+        remaining_caps[route_idx] -= item_sizes[item_to_insert - 1]
+        unassigned_items.pop(item_list_idx)
+
+    final_route_dists = [calculate_route_dist(r, dist) for r in routes]
+    return routes, max(final_route_dists) if final_route_dists else 0
 
 def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, approach="CBC"):
     """
@@ -102,7 +111,6 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
     log("Finished defining variables.")
     
     log("Adding core constraints...")
-    # (A) to (G) are the core model constraints
     for j in range(1, n+1): solver.Add(solver.Sum(a[(i, j)] for i in range(m)) == 1)
     for i in range(m): solver.Add(solver.Sum(a[(i, j)] * item_sizes[j-1] for j in range(1, n+1)) <= capacities[i])
     for i in range(m):
@@ -123,20 +131,21 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
                 if j != k: solver.Add(u[(i, j)] - u[(i, k)] + n * x[(i, j, k)] <= n - 1)
     log("Finished adding core constraints.")
 
-    log("Adding optional enhancements...")
-    # (H) CORRECTED: Optional symmetry-breaking constraints
-    if "SB" in approach.upper():
-        log("  Adding Symmetry-Breaking constraints.")
-        for i2 in range(1, m):
-            solver.Add(solver.Sum(j * a[(i2 - 1, j)] for j in range(1, n+1)) <= solver.Sum(j * a[(i2, j)] for j in range(1, n+1)))
+    #Symmetry breaking
+    for i2 in range(1, m):
+        solver.Add(solver.Sum(j * a[(i2 - 1, j)] for j in range(1, n+1)) <= solver.Sum(j * a[(i2, j)] for j in range(1, n+1)))
     
-    # (I) CORRECTED: Optional implied constraints
-    if "IMPLIED" in approach.upper():
-        log("  Adding Implied constraints.")
-        if any(dist[0][j] + dist[j][0] > 0 for j in range(1, n+1)):
-            max_roundtrip = max(dist[0][j] + dist[j][0] for j in range(1, n+1))
-            solver.Add(z >= max_roundtrip / 2.0)
-    log("Finished adding optional enhancements.")
+
+    #Implied constraints
+    if any(dist[0][j] + dist[j][0] > 0 for j in range(1, n+1)):
+        max_roundtrip = max(dist[0][j] + dist[j][0] for j in range(1, n+1))
+        solver.Add(z >= max_roundtrip / 2.0)
+
+    # #adding greedy upperbound
+    # _, ub = compute_greedy_solution(m, n, capacities, item_sizes, dist)
+    # if ub is not None and ub > 0:
+    #         solver.Add(z <= ub)
+
 
     solver.Minimize(z)
     log("--- Starting solver ---")
@@ -183,15 +192,15 @@ if __name__ == "__main__":
         print(f"Error: Instance file not found at '{instance_file}'")
         sys.exit(1)
 
-    TOTAL_TIMEOUT = 300  # 5 minutes total
+    TOTAL_TIMEOUT = 300
 
     try:
         log(f"Reading instance file: {instance_file}")
         m, n, capacities, item_sizes, dist = read_instance(instance_file)
         log(f"Instance loaded: m={m}, n={n}")
         
-        # Example approach string, can be changed as needed
-        approach_str = "SCIP+SB+IMPLIED"
+        # Use all enhancements including the new Warm Start (WM)
+        approach_str = "SCIP+SB+IMPLIED+WM"
         
         result_queue = multiprocessing.Queue()
         

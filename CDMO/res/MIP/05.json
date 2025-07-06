@@ -13,7 +13,7 @@
             ]
         ]
     },
-    "HIGHS_SB": {
+    "HIGHS+SB": {
         "time": 0,
         "optimal": true,
         "obj": 206.0,
@@ -27,7 +27,7 @@
             ]
         ]
     },
-    "HIGHS_SB_IMPLIED": {
+    "HIGHS+SB+IMPLIED": {
         "time": 0,
         "optimal": true,
         "obj": 206.0,
@@ -41,13 +41,13 @@
             ]
         ]
     },
-    "HIGHS_SB_IMPLIED_WM": {
+    "HIGHS+SB+IMPLIED+WM": {
         "time": 0,
         "optimal": false,
         "obj": -1.0,
         "sol": []
     },
-    "HIGHS_SB_IMPLIED_WM_CUT": {
+    "HIGHS+SB+IMPLIED+WM+CUT": {
         "time": 0,
         "optimal": false,
         "obj": -1.0,

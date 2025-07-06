@@ -1,0 +1,51 @@
+{
+    "HIGHS": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "HIGHS_SB": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "HIGHS_SB_IMPLIED": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "HIGHS_SB_IMPLIED_WM": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "HIGHS_SB_IMPLIED_WM_CUT": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "CBC": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    },
+    "SCIP": {
+        "time": 300,
+        "optimal": false,
+        "obj": -1.0,
+        "sol": [],
+        "status": "Total timeout exceeded"
+    }
+}
