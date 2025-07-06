@@ -73,12 +73,11 @@ def build_solver_pure_sat(
     e_vars: Dict[Tuple[int, int, int], Bool] = { (i, a, b): Bool(f"e_{i}_{a}_{b}") for i in range(m) for a in nodes for b in neighbors[a] if a != b }
     p_vars: Dict[Tuple[int, int, int], Bool] = { (i, j, k): Bool(f"p_{i}_{j}_{k}") for i in range(m) for j in items for k in positions }
 
-    # --- CORRECTED: Core Assignment and Positioning ---
-    # 1. Each item must be in exactly one position (i, k) across all couriers.
+    # 1.Each item must be in exactly one positon (i, k) across all couriers
     for j in items:
         s.add(PbEq([(p_vars[i, j, k], 1) for i in range(m) for k in positions], 1))
 
-    # 2. Each position (i, k) can hold at most one item.
+    # 2. each position (i, k) can hold at most one item.
     for i in range(m):
         for k in positions:
             s.add(PbLe([(p_vars[i, j, k], 1) for j in items], 1))
@@ -90,17 +89,16 @@ def build_solver_pure_sat(
             pos_k_minus_1_filled = Or([p_vars[i, j, k-1] for j in items])
             s.add(Implies(pos_k_filled, pos_k_minus_1_filled))
 
-    # --- Derive auxiliary v_vars and e_vars from p_vars ---
-    # 4. Link p_vars to v_vars (for capacity check)
+    # 4. Link p_vars to v_vars (for capacity check)..
     for i in range(m):
         for j in items:
             s.add(v_vars[i, j] == Or([p_vars[i, j, k] for k in positions]))
 
-    # 5. Capacity constraint (uses derived v_vars)
+    # 5. Capacity constraint (uses derived v_vars
     for i in range(m):
         s.add(PbLe([(v_vars[i, j], siz[j]) for j in items], cap[i]))
 
-    # 6. Link p_vars to e_vars (for distance check)
+    # 6.Link p_vars to e_vars (for distance check)
     for i in range(m):
         for a in nodes:
             for b in nodes:
@@ -260,7 +258,6 @@ def main() -> None:
         sys.exit(1)
 
     for f in files:
-        print(f"=== Solving {f.name} with strategy: {args.search} ===")
         try:
             inst = load_instance(f)
             opt_val, tours, optimal = optimise(

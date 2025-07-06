@@ -126,7 +126,6 @@ def compute_greedy_solution(m, n, capacities, item_sizes, dist):
     
         # if we couldnt find a place for any item, somthing is wrong.
         if best_insertion is None:
-            log("Warning: Could not assign all items in greedy heuristic.")
             break
         
         # we found the best move! lets make it happen.
@@ -152,10 +151,9 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
     start_time = time.time()
     
     # --- 1. Setting up the Solver ---
-    log("Creating the HiGHS solver. Let's get ready to solve this thing!")
     solver = pywraplp.Solver.CreateSolver("highs")
     if not solver:
-        raise RuntimeError("oops, couldnt create the HiGHS solver. is OR-Tools installed correctly??")
+        raise RuntimeError("Error")
     
     # Give the solver some instructions to help it run faster.
     solver_params_str = "presolve=on,heuristics=on,parallel=on"
@@ -316,12 +314,10 @@ def solve_process_wrapper(result_queue, *args):
 if __name__ == "__main__":
     # Make sure the user provided a problem file.
     if len(sys.argv) != 2:
-        print("How to use: python mcp_solver.py <path_to_instance.dat>")
         sys.exit(1)
         
     instance_file = sys.argv[1]
     if not os.path.exists(instance_file):
-        print(f"Error: Can't find the file '{instance_file}'")
         sys.exit(1)
 
     TOTAL_TIMEOUT = 300  # 5 minutes total time limit

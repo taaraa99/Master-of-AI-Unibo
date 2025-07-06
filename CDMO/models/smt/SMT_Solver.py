@@ -69,8 +69,8 @@ def _populate_common_constraints(
 
     # --- k-Nearest-Neighbor Pruning ---
     # A neat trick to make things faster. if we use knn, we dont look at all
-    # possible edges, just the ones between neighbors that are close to each other.
-    # Cuts down the problem size a lot.
+    # possible edges, just the ones between neighbors that are close to each other
+    # Cuts down the problem size a lot
     if knn is None:
         neighbors: Dict[int, Set[int]] = {a: set(nodes) for a in nodes}
     else:
@@ -80,7 +80,7 @@ def _populate_common_constraints(
             dists = sorted((D[a][b], b) for b in nodes if b != a)
             for _, b in dists[:knn]:
                 neighbors[a].add(b)
-        # always make sure the depot is a neighbor so we can get back home
+        # always make sure the depot is a neighbo so we can get back home
         for a in nodes:
             neighbors[a].add(dep)
             neighbors[dep].add(a)
@@ -91,7 +91,7 @@ def _populate_common_constraints(
     e_vars: Dict[Tuple[int,int,int], Bool] = {} # is truck i going from a to b? yes or no.
     u_vars: Dict[Tuple[int,int], Int] = {}   # this ones for stopping subtours. whats the position of a stop in a tour.
 
-    # ok lets actually create the z3 variables now
+    # creating the z3 variables
     for i in range(m):
         for j in range(n):
             v_vars[(i,j)] = Bool(f"v_{i}_{j}")
