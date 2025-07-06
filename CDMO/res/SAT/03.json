@@ -1,6 +1,6 @@
 {
     "sat_linear": {
-        "time": 2,
+        "time": 1,
         "optimal": true,
         "obj": 12,
         "sol": [
@@ -20,7 +20,7 @@
         ]
     },
     "sat_binary": {
-        "time": 3,
+        "time": 2,
         "optimal": true,
         "obj": 12,
         "sol": [

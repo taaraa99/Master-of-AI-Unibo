@@ -51,7 +51,7 @@
         ]
     },
     "gecode-sb-imp": {
-        "time": 1,
+        "time": 0,
         "optimal": true,
         "obj": 14,
         "sol": [
@@ -68,7 +68,7 @@
         ]
     },
     "chuffed-no-sb": {
-        "time": 2,
+        "time": 0,
         "optimal": true,
         "obj": 14,
         "sol": [
@@ -85,7 +85,7 @@
         ]
     },
     "chuffed-no-sb-imp": {
-        "time": 1,
+        "time": 0,
         "optimal": true,
         "obj": 14,
         "sol": [
@@ -119,7 +119,7 @@
         ]
     },
     "chuffed-sb-imp": {
-        "time": 1,
+        "time": 0,
         "optimal": true,
         "obj": 14,
         "sol": [

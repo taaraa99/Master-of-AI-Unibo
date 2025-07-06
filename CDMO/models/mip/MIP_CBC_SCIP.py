@@ -104,17 +104,17 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
             # Correct parameter for SCIP time limit is 'limits/time'
             scip_params = f"limits/time = {time_limit}"
             solver.SetSolverSpecificParametersAsString(scip_params)
-            print(f"SCIP specific parameters set: '{scip_params}'")
         except Exception as e:
-            print(f"Warning: Could not set SCIP-specific parameters: {e}")
+            # Silently ignore if parameters can't be set
+            pass
 
     # Optionally, compute a greedy solution to get an initial upper bound.
     routes, ub = None, None
     try:
         routes, ub = compute_greedy_solution(m, n, capacities, item_sizes, dist)
-        print(f"Greedy solution upper bound: {ub}")
     except Exception as e:
-        print("Warning: Greedy approach failed:", e)
+        # Silently ignore if greedy approach fails
+        pass
 
     # Define the decision variables for the optimization model.
     # a[i, j] is 1 if item j is assigned to courier i, 0 otherwise.
@@ -247,7 +247,8 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     if len(sys.argv) < 2:
-        print("Usage: python your_script_name.py <instance.dat> [approach]")
+        # The original code printed a usage message here.
+        # It has been removed as requested.
         sys.exit(1)
         
     instance_file = sys.argv[1]
@@ -255,15 +256,14 @@ if __name__ == "__main__":
     approach_str = sys.argv[2] if len(sys.argv) > 2 else "CBC"
 
     if not os.path.exists(instance_file):
-        print(f"Error: Instance file not found at '{instance_file}'")
+        # The original code printed an error message here.
+        # It has been removed as requested.
         sys.exit(1)
 
     TOTAL_TIMEOUT = 300  # 5 minutes
 
     try:
-        print(f"Reading instance file: {instance_file}")
         m, n, capacities, item_sizes, dist = read_instance(instance_file)
-        print(f"Instance loaded: m={m}, n={n}")
         
         # Prepare for multiprocessing
         result_queue = multiprocessing.Queue()
@@ -271,7 +271,6 @@ if __name__ == "__main__":
         
         p = multiprocessing.Process(target=solve_process_wrapper, args=(result_queue,) + solver_args)
         
-        print(f"Starting solver process for '{approach_str}' with a total timeout of {TOTAL_TIMEOUT} seconds...")
         p.start()
         
         # Wait for the process to finish or timeout
@@ -279,13 +278,11 @@ if __name__ == "__main__":
         
         result = None
         if p.is_alive():
-            print(f"Total time limit of {TOTAL_TIMEOUT} seconds exceeded. Terminating process.")
             p.terminate() # First, try a graceful shutdown
             p.join(1) # Wait a moment for it to close
             if p.is_alive():
-                 print("Process did not terminate gracefully, killing it.")
-                 p.kill() # Forcefully kill the process
-                 p.join()
+                p.kill() # Forcefully kill the process
+                p.join()
             
             # Create a timeout result
             result = {
@@ -295,7 +292,6 @@ if __name__ == "__main__":
                 }
             }
         else:
-            print("Process finished within the time limit.")
             # Get the result from the queue
             output = result_queue.get()
             if isinstance(output, Exception):
@@ -303,12 +299,17 @@ if __name__ == "__main__":
                 raise output
             result = output
 
-        print("\n--- Solution ---")
-        print(json.dumps(result, indent=4))
+        # The final solution is now in the 'result' variable.
+        # The original code printed it to the console.
+        # To use the result, you would now process the 'result' dictionary.
+        # For example, you could write it to a file:
+        # with open("solution.json", "w") as f:
+        #     json.dump(result, f, indent=4)
+
 
     except (ValueError, RuntimeError, queue.Empty) as e:
-        print(f"\nAn error occurred: {e}")
+        # Error handling without printing
         sys.exit(1)
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
+        # Error handling without printing
         sys.exit(1)
