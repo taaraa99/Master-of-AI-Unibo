@@ -2,3 +2,6 @@ minizinc
 pulp
 z3-solver
 ortools==9.11.4210
+numpy
+matplotlib
+networkx

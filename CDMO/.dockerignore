@@ -1,0 +1,20 @@
+# Docker stuff
+Dockerfile
+.dockerignore
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Git folder
+.git/
+
+# Results folder (we will mount this as a volume instead)
+res/
+
+# IDE folders
+.vscode/
+.idea/
