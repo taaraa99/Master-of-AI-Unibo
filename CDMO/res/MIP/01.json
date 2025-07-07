@@ -1,135 +1,121 @@
 {
     "HIGHS": {
-        "HIGHS": {
-            "time": 0.22,
-            "optimal": true,
-            "obj": 14,
-            "sol": [
-                [
-                    4,
-                    3,
-                    1
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0.26,
+        "optimal": true,
+        "obj": 14,
+        "sol": [
+            [
+                4,
+                3,
+                1
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "HIGHS_SB": {
-        "HIGHS+SB": {
-            "time": 0.22,
-            "optimal": true,
-            "obj": 14,
-            "sol": [
-                [
-                    4,
-                    3,
-                    1
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0.29,
+        "optimal": true,
+        "obj": 14,
+        "sol": [
+            [
+                4,
+                3,
+                1
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "HIGHS_SB_IMPLIED": {
-        "HIGHS+SB+IMPLIED": {
-            "time": 0.22,
-            "optimal": true,
-            "obj": 14,
-            "sol": [
-                [
-                    4,
-                    3,
-                    1
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0.37,
+        "optimal": true,
+        "obj": 14,
+        "sol": [
+            [
+                4,
+                3,
+                1
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "HIGHS_SB_IMPLIED_WM": {
-        "HIGHS+SB+IMPLIED+WM": {
-            "time": 0.1,
-            "optimal": true,
-            "obj": 14,
-            "sol": [
-                [
-                    1,
-                    3,
-                    4
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0.24,
+        "optimal": true,
+        "obj": 14,
+        "sol": [
+            [
+                1,
+                3,
+                4
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "HIGHS_SB_IMPLIED_WM_CUT": {
-        "HIGHS+SB+IMPLIED+WM+CUT": {
-            "time": 0.1,
-            "optimal": true,
-            "obj": 14,
-            "sol": [
-                [
-                    1,
-                    3,
-                    4
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0.13,
+        "optimal": true,
+        "obj": 14,
+        "sol": [
+            [
+                1,
+                3,
+                4
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "CBC": {
-        "CBC": {
-            "time": 0,
-            "optimal": true,
-            "obj": 14.0,
-            "sol": [
-                [
-                    4,
-                    3,
-                    1
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 1,
+        "optimal": true,
+        "obj": 14.0,
+        "sol": [
+            [
+                1,
+                3,
+                4
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     },
     "SCIP": {
-        "SCIP": {
-            "time": 0,
-            "optimal": true,
-            "obj": 14.0,
-            "sol": [
-                [
-                    1,
-                    3,
-                    4
-                ],
-                [
-                    2,
-                    5,
-                    6
-                ]
+        "time": 0,
+        "optimal": true,
+        "obj": 14.0,
+        "sol": [
+            [
+                1,
+                3,
+                4
+            ],
+            [
+                2,
+                5,
+                6
             ]
-        }
+        ]
     }
 }

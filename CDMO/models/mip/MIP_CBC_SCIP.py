@@ -230,7 +230,7 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
         solution["sol"] = [[] for _ in range(m)]
         solution["obj"] = -1
         
-    return { approach.upper(): solution }
+    return solution
 
 def solve_process_wrapper(result_queue, *args):
     """A wrapper to run the solver in a separate process and handle exceptions."""
@@ -247,8 +247,6 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
 
     if len(sys.argv) < 2:
-        # The original code printed a usage message here.
-        # It has been removed as requested.
         sys.exit(1)
         
     instance_file = sys.argv[1]
@@ -256,8 +254,6 @@ if __name__ == "__main__":
     approach_str = sys.argv[2] if len(sys.argv) > 2 else "CBC"
 
     if not os.path.exists(instance_file):
-        # The original code printed an error message here.
-        # It has been removed as requested.
         sys.exit(1)
 
     TOTAL_TIMEOUT = 300  # 5 minutes
@@ -286,10 +282,8 @@ if __name__ == "__main__":
             
             # Create a timeout result
             result = {
-                approach_str.upper(): {
                     "time": TOTAL_TIMEOUT, "optimal": False, "obj": -1.0, 
                     "sol": [], "status": "Total timeout exceeded"
-                }
             }
         else:
             # Get the result from the queue
@@ -299,17 +293,9 @@ if __name__ == "__main__":
                 raise output
             result = output
 
-        # The final solution is now in the 'result' variable.
-        # The original code printed it to the console.
-        # To use the result, you would now process the 'result' dictionary.
-        # For example, you could write it to a file:
-        # with open("solution.json", "w") as f:
-        #     json.dump(result, f, indent=4)
 
 
     except (ValueError, RuntimeError, queue.Empty) as e:
-        # Error handling without printing
         sys.exit(1)
     except Exception as e:
-        # Error handling without printing
         sys.exit(1)

@@ -293,7 +293,7 @@ def build_and_solve_mcp(m, n, capacities, item_sizes, dist, time_limit=300, appr
         else:
             solution["obj"] = 0.0
     
-    return {approach.upper(): solution}
+    return solution
 
 def solve_process_wrapper(result_queue, *args):
     """
@@ -349,10 +349,8 @@ if __name__ == "__main__":
             
             # Create a special "timeout" result.
             result = {
-                approach_str.upper(): {
                     "time": TOTAL_TIMEOUT, "optimal": False, "obj": -1.0, 
                     "sol": [], "status": "Total timeout exceeded"
-                }
             }
         else:
             # The process finished on its own.

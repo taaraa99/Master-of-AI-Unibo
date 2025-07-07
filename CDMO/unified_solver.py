@@ -1,7 +1,7 @@
 #
-# This script is designed to be a one-stop-shop for runnin various optimization models (MIP, CP, SAT, SMT)
-# on a set of problem instances. Its built to be robust, handlin timeouts and organizing results all neat-like.
-#
+# This script is designed to be a one-stop-shop for runnin varius optimization models (MIP, CP, SAT, SMT)
+# on a set of problem instances. Its built to be robust, handlin timeouts and organizing results
+
 
 import os
 import json
@@ -17,8 +17,8 @@ import multiprocessing
 import queue
 
 # --- Model Imports ---
-# We're pullin in the actual solver funtions from their own files.
-# Each file has the logic for a specific kind of model.
+# We're pullin in the actual solver funtions from their own files
+# Each file has the logic for a specific kind of model
 from models.mip.MIP_HiGHS import read_instance as read_instance1, build_and_solve_mcp as build_and_solve_mcp1
 from models.mip.MIP_CBC_SCIP import read_instance as read_instance2, build_and_solve_mcp as build_and_solve_mcp2
 from models.sat.sat import load_instance as load_instance_sat, optimise
@@ -68,8 +68,8 @@ def save_results(output_path: str, new_results: Dict):
 def solve_process_wrapper(result_queue: multiprocessing.Queue, solver_func: Callable, args: tuple):
     """
     this funtion is a safety net, it runs a solver in its own process.
-    Why? Becuase some solvrs can be a bit wild and unpredictable, maybe they crash or eat all the memory.
-    runing them seperate like this isolates them, so if one of em fails, it don;t bring down the whole script.
+    Why? Becuase some solvrs can be a bit wild and unpredictable, maybe they crash or eat all the memory
+    runing them seperate like this isolates them, so if one of em fails, it don;t bring down the complet script.
     """
     try:
         log(f"Process {os.getpid()} starting solver function: {solver_func.__name__}")
